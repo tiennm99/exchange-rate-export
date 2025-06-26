@@ -146,7 +146,7 @@ export default function TcbPage() {
   }
 
   return (
-    <div style={{ background: "#fff", padding: 24, borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", maxWidth: 700, margin: "auto" }}>
+    <div className="container">
       <h1>Exchange Rate Export (USD, Techcombank)</h1>
       <div style={{ marginBottom: 20 }}>
         <label htmlFor="start-date">Start Date:</label>
