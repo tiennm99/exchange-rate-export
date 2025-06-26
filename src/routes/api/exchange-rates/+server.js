@@ -1,5 +1,15 @@
 import { json } from '@sveltejs/kit';
-import { format, parse } from 'date-fns';
+import { format } from 'date-fns';
+import axios from 'axios';
+import https from 'https';
+import crypto from 'crypto';
+
+// Configure axios with legacy SSL support
+const axiosInstance = axios.create({
+  httpsAgent: new https.Agent({
+    secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
+  })
+});
 
 // Helper function to fetch BIDV exchange rates
 async function fetchBIDVRates(dateObj) {
@@ -7,16 +17,8 @@ async function fetchBIDVRates(dateObj) {
   
   try {
     // First API call to get namerecord
-    const timeRes = await fetch('https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `date=${encodeURIComponent(dateStr)}`
-    });
-    
-    if (!timeRes.ok) throw new Error('Failed to fetch BIDV time data');
-    const timeData = await timeRes.json();
+    const timeRes = await axiosInstance.get(`https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet?date=${dateStr}`);
+    const timeData = timeRes.data;
     
     if (timeData.status !== 1 || !timeData.data?.length) return null;
     
@@ -25,16 +27,8 @@ async function fetchBIDVRates(dateObj) {
       current.time > latest.time ? current : latest, timeData.data[0]);
     
     // Second API call to get exchange rates
-    const rateRes = await fetch('https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `date=${encodeURIComponent(dateStr)}&time=${latest.namerecord}`
-    });
-    
-    if (!rateRes.ok) throw new Error('Failed to fetch BIDV rate data');
-    const rateData = await rateRes.json();
+    const rateRes = await axiosInstance.get(`https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet?date=${dateStr}&time=${latest.namerecord}`);
+    const rateData = rateRes.data;
     
     if (rateData.status !== 1 || !rateData.data) return null;
     
@@ -62,10 +56,8 @@ async function fetchTCBRates(dateObj) {
   const dateStr = format(dateObj, 'yyyy-MM-dd');
   const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
   
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Failed to fetch TCB data');
-  
-  const data = await res.json();
+  const res = await axiosInstance.get(url);
+  const data = res.data;
   if (!data.exchangeRate?.data) return null;
   
   // Find USD data
