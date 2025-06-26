@@ -14,165 +14,68 @@
   let results = [];
   let showTable = false;
 
-
-
   // Format date for display
   const formatDisplayDate = (dateStr) => {
-    const [year, month, day] = dateStr.split('-');
-    return `${day}/${month}/${year}`;
-  };
-
-  // Get date range between start and end dates
-  const getDateRange = (start, end) => {
-    const dates = [];
-    let current = new Date(start);
-    const last = new Date(end);
-    
-    while (current <= last) {
-      dates.push(new Date(current));
-      current.setDate(current.getDate() + 1);
+    try {
+      // Handle both yyyy-MM-dd and dd/MM/yyyy formats
+      let date;
+      if (dateStr.includes('/')) {
+        const [day, month, year] = dateStr.split('/');
+        date = new Date(`${year}-${month}-${day}`);
+      } else {
+        date = new Date(dateStr);
+      }
+      return format(date, 'dd/MM/yyyy');
+    } catch (e) {
+      return dateStr; // Return as is if parsing fails
     }
-    
-    return dates;
   };
 
-  // Format date for API requests
-  const formatDateForApi = (date) => {
-    const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  // Fetch BIDV exchange rates
-  const fetchBIDVRates = async (dateObj) => {
-    const dateStr = format(dateObj, 'dd/MM/yyyy');
-    
-    // First API call to get namerecord
-    const timeRes = await fetch('https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `date=${encodeURIComponent(dateStr)}`
-    });
-    
-    if (!timeRes.ok) throw new Error('Failed to fetch BIDV time data');
-    const timeData = await timeRes.json();
-    
-    if (timeData.status !== 1 || !timeData.data?.length) return null;
-    
-    // Get the latest record
-    const latest = timeData.data.reduce((latest, current) => 
-      current.time > latest.time ? current : latest, timeData.data[0]);
-    
-    // Second API call to get exchange rates
-    const rateRes = await fetch('https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `date=${encodeURIComponent(dateStr)}&time=${latest.namerecord}`
-    });
-    
-    if (!rateRes.ok) throw new Error('Failed to fetch BIDV rate data');
-    const rateData = await rateRes.json();
-    
-    if (rateData.status !== 1 || !rateData.data) return null;
-    
-    // Find USD data
-    const usd = rateData.data.find(item => item.currency === 'USD');
-    if (!usd) return null;
-    
-    return {
-      date: dateStr,
-      nameVI: usd.nameVI || '',
-      muaTm: usd.muaTm || '',
-      muaCk: usd.muaCk || '',
-      currency: usd.currency || 'USD',
-      nameEN: usd.nameEN || '',
-      ban: usd.ban || ''
-    };
-  };
-
-  // Fetch TCB exchange rates
-  const fetchTCBRates = async (dateObj) => {
-    const dateStr = format(dateObj, 'yyyy-MM-dd');
-    const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
-    
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch TCB data');
-    
-    const data = await res.json();
-    if (!data.exchangeRate?.data) return null;
-    
-    // Find USD data
-    const usd = data.exchangeRate.data.find(item => item.label === 'USD (50,100)');
-    if (!usd) return null;
-    
-    return {
-      date: formatDisplayDate(dateStr),
-      label: usd.label || '',
-      askRate: usd.askRate || '',
-      bidRateCK: usd.bidRateCK || '',
-      bidRateTM: usd.bidRateTM || '',
-      askRateTM: usd.askRateTM || '',
-      sourceCurrency: usd.sourceCurrency || 'USD',
-      targetCurrency: usd.targetCurrency || 'VND'
-    };
-  };
-
-  // Handle fetch button click
+  // Handle form submission
   const handleFetch = async () => {
     if (!startDate || !endDate) {
       error = 'Please select both start and end dates';
       return;
     }
     
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    if (start > end) {
-      error = 'Start date must be before end date';
-      return;
-    }
-    
-    const dateRange = getDateRange(start, end);
-    if (dateRange.length > 31) {
-      error = 'Date range cannot exceed 31 days';
-      return;
-    }
-    
-    isLoading = true;
     error = '';
+    isLoading = true;
     results = [];
     showTable = false;
     
     try {
-      const fetchPromises = dateRange.map(async (date) => {
-        try {
-          if (selectedBank === 'bidv') {
-            return await fetchBIDVRates(date);
-          } else {
-            return await fetchTCBRates(date);
-          }
-        } catch (e) {
-          console.error(`Error fetching data for ${date}:`, e);
-          return null;
-        }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      if (start > end) {
+        error = 'Start date cannot be after end date';
+        return;
+      }
+      
+      // Call our server endpoint
+      const response = await fetch('/api/exchange-rates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          startDate: start.toISOString().split('T')[0],
+          endDate: end.toISOString().split('T')[0],
+          bank: selectedBank
+        })
       });
       
-      const fetchedResults = await Promise.all(fetchPromises);
-      results = fetchedResults.filter(Boolean);
-      showTable = results.length > 0;
-      
-      if (results.length === 0) {
-        error = 'No data found for the selected date range';
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch exchange rates');
       }
-    } catch (e) {
-      console.error('Error fetching data:', e);
-      error = 'An error occurred while fetching data. Please try again.';
+      
+      const data = await response.json();
+      results = data.data || [];
+      showTable = true;
+    } catch (err) {
+      error = `An error occurred while fetching exchange rates: ${err.message}`;
+      console.error(err);
     } finally {
       isLoading = false;
     }
