@@ -78,11 +78,6 @@
             <input type="date" id="end-date">
             <button id="fetch-btn">Fetch</button>
             <button id="export-btn" disabled>Export CSV</button>
-            <label for="bank-select">Bank:</label>
-            <select id="bank-select">
-                <option value="bidv">BIDV</option>
-                <option value="tcb">Techcombank</option>
-            </select>
         </div>
         <div id="status"></div>
         <table id="result-table" style="display:none;">
@@ -266,14 +261,6 @@
         exportBtn.onclick = () => {
             if (results.length) exportCSV(results);
         };
-
-        document.getElementById('bank-select').onchange = function() {
-            if (this.value === 'bidv') {
-                window.location.href = 'bidv.html';
-            } else if (this.value === 'tcb') {
-                window.location.href = 'tcb.html';
-            }
-        };
     </script>
 </body>
-</html>
+</html> 

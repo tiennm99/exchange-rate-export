@@ -1,10 +1,11 @@
 # exchange-rate-export
-Get data from BIDV[https://bidv.com.vn/vn/ty-gia-ngoai-te] and export to Excel format.
+Fetch data from BIDV or Techcombank and export to Excel format.
 
 Features:
-- Allow select time range.
-- Export to Excel.
+- Choose BIDV or Techcombank.
+- Select time range.
+- View and export to Excel.
 
-Use these api:
-- https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet
-- https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet
+Use data from :
+- https://bidv.com.vn/vn/ty-gia-ngoai-te
+- https://techcombank.com/cong-cu-tien-ich/ty-gia
