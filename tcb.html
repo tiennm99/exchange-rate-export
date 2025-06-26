@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exchange Rate Export</title>
+    <title>Exchange Rate Export - Techcombank</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -70,7 +70,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Exchange Rate Export (USD)</h1>
+        <h1>Exchange Rate Export (USD, Techcombank)</h1>
         <div style="margin-bottom: 20px;">
             <label for="start-date">Start Date:</label>
             <input type="date" id="start-date">
@@ -78,23 +78,19 @@
             <input type="date" id="end-date">
             <button id="fetch-btn">Fetch</button>
             <button id="export-btn" disabled>Export CSV</button>
-            <label for="bank-select">Bank:</label>
-            <select id="bank-select">
-                <option value="bidv">BIDV</option>
-                <option value="tcb">Techcombank</option>
-            </select>
         </div>
         <div id="status"></div>
         <table id="result-table" style="display:none;">
             <thead>
                 <tr>
                     <th>Date</th>
-                    <th>nameVI</th>
-                    <th>muaTm</th>
-                    <th>muaCk</th>
-                    <th>currency</th>
-                    <th>nameEN</th>
-                    <th>ban</th>
+                    <th>label</th>
+                    <th>askRate</th>
+                    <th>bidRateCK</th>
+                    <th>bidRateTM</th>
+                    <th>askRateTM</th>
+                    <th>sourceCurrency</th>
+                    <th>targetCurrency</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -130,55 +126,30 @@
             return dates;
         }
 
-        async function fetchNamerecord(dateStr) {
-            const url = 'https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet';
-            const payload = `date=${encodeURIComponent(dateStr)}`;
+        async function fetchUSD(dateObj) {
+            // Techcombank API expects yyyy-mm-dd in URL
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            const dateStr = `${yyyy}-${mm}-${dd}`;
+            const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
             try {
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: payload
-                });
-                if (!res.ok) throw new Error('API 1 error');
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('API error');
                 const data = await res.json();
-                if (data.status !== 1 || !data.data || !data.data.length) return null;
-                // Get the latest (max time) record
-                let latest = data.data[0];
-                for (const rec of data.data) {
-                    if (rec.time > latest.time) latest = rec;
-                }
-                return latest.namerecord;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        async function fetchUSD(dateStr, namerecord) {
-            const url = 'https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet';
-            const payload = `date=${encodeURIComponent(dateStr)}&time=${namerecord}`;
-            try {
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: payload
-                });
-                if (!res.ok) throw new Error('API 2 error');
-                const data = await res.json();
-                if (data.status !== 1 || !data.data) return null;
-                // Find USD (currency === 'USD')
-                const usd = data.data.find(item => item.currency === 'USD');
+                if (!data.exchangeRate || !data.exchangeRate.data) return null;
+                // Find USD (50,100)
+                const usd = data.exchangeRate.data.find(item => item.label === 'USD (50,100)');
                 if (!usd) return null;
                 return {
-                    nameVI: usd.nameVI,
-                    muaTm: usd.muaTm,
-                    muaCk: usd.muaCk,
-                    currency: usd.currency,
-                    nameEN: usd.nameEN,
-                    ban: usd.ban
+                    date: formatDate(dateObj),
+                    label: usd.label,
+                    askRate: usd.askRate,
+                    bidRateCK: usd.bidRateCK,
+                    bidRateTM: usd.bidRateTM,
+                    askRateTM: usd.askRateTM,
+                    sourceCurrency: usd.sourceCurrency,
+                    targetCurrency: usd.targetCurrency
                 };
             } catch (e) {
                 return null;
@@ -191,12 +162,13 @@
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${row.date}</td>
-                    <td>${row.nameVI}</td>
-                    <td>${row.muaTm}</td>
-                    <td>${row.muaCk}</td>
-                    <td>${row.currency}</td>
-                    <td>${row.nameEN}</td>
-                    <td>${row.ban}</td>
+                    <td>${row.label}</td>
+                    <td>${row.askRate || ''}</td>
+                    <td>${row.bidRateCK || ''}</td>
+                    <td>${row.bidRateTM || ''}</td>
+                    <td>${row.askRateTM || ''}</td>
+                    <td>${row.sourceCurrency}</td>
+                    <td>${row.targetCurrency}</td>
                 `;
                 tbody.appendChild(tr);
             }
@@ -204,25 +176,26 @@
         }
 
         function exportCSV(data) {
-            const header = ['Date', 'nameVI', 'muaTm', 'muaCk', 'currency', 'nameEN', 'ban'];
+            const header = ['Date', 'label', 'askRate', 'bidRateCK', 'bidRateTM', 'askRateTM', 'sourceCurrency', 'targetCurrency'];
             const rows = [header];
             for (const row of data) {
                 rows.push([
                     row.date,
-                    row.nameVI,
-                    row.muaTm,
-                    row.muaCk,
-                    row.currency,
-                    row.nameEN,
-                    row.ban
+                    row.label,
+                    row.askRate,
+                    row.bidRateCK,
+                    row.bidRateTM,
+                    row.askRateTM,
+                    row.sourceCurrency,
+                    row.targetCurrency
                 ]);
             }
-            const csvContent = rows.map(r => r.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+            const csvContent = rows.map(r => r.map(cell => '"' + String(cell || '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
             const blob = new Blob([csvContent], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'usd_exchange_rates.csv';
+            a.download = 'usd_exchange_rates_tcb.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -250,11 +223,9 @@
                 const dateObj = dates[i];
                 const dateStr = formatDate(dateObj);
                 statusDiv.innerHTML = `<div class=\"loading\">Fetching: ${dateStr} (${i+1}/${dates.length})</div>`;
-                const namerecord = await fetchNamerecord(dateStr);
-                if (!namerecord) continue;
-                const usd = await fetchUSD(dateStr, namerecord);
+                const usd = await fetchUSD(dateObj);
                 if (usd) {
-                    results.push({ date: dateStr, ...usd });
+                    results.push(usd);
                     renderTable(results);
                 }
             }
@@ -266,14 +237,6 @@
         exportBtn.onclick = () => {
             if (results.length) exportCSV(results);
         };
-
-        document.getElementById('bank-select').onchange = function() {
-            if (this.value === 'bidv') {
-                window.location.href = 'bidv.html';
-            } else if (this.value === 'tcb') {
-                window.location.href = 'tcb.html';
-            }
-        };
     </script>
 </body>
-</html>
+</html> 
