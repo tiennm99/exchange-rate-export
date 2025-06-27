@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import ExchangeRateViewer from "./components/ExchangeRateViewer";
 import { format, subDays } from "date-fns";
