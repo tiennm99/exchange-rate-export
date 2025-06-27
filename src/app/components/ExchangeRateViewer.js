@@ -127,57 +127,57 @@ export default function ExchangeRateViewer({
   };
 
   return (
-    <div className="container mx-auto p-4 max-w-2xl">
+    <div className="container mx-auto p-4 max-w-5xl w-full">
       <h1 className="text-2xl font-bold mb-4">Exchange Rate Export</h1>
-      <div className="controls grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-        <div className="form-group flex flex-col">
-          <label htmlFor="bank" className="mb-1">
-            Bank:
-          </label>
-          <select
-            id="bank"
-            value={selectedBank}
-            onChange={(e) => setSelectedBank(e.target.value)}
-            className="border rounded p-2"
-          >
-            <option value="bidv">BIDV</option>
-            <option value="tcb">Techcombank</option>
-          </select>
+      <div className="flex flex-col gap-4 mb-4">
+        {/* Row 1: Start & End Date Pickers and Bank Select */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="form-group flex flex-col w-full sm:w-1/3">
+            <label htmlFor="bank" className="mb-1">Bank:</label>
+            <select
+              id="bank"
+              value={selectedBank}
+              onChange={(e) => setSelectedBank(e.target.value)}
+              className="border rounded p-2 w-full theme-select"
+              style={{ background: 'var(--background)', color: 'var(--foreground)' }}
+            >
+              <option value="bidv">BIDV</option>
+              <option value="tcb">Techcombank</option>
+            </select>
+          </div>
+          <div className="form-group flex flex-col w-full sm:w-1/3">
+            <label htmlFor="start-date" className="mb-1">Start Date:</label>
+            <DatePicker
+              id="start-date"
+              selected={startDate}
+              onChange={(date) => setStartDate(date)}
+              maxDate={endDate || new Date()}
+              dateFormat="yyyy-MM-dd"
+              className="border rounded p-2 w-full"
+              placeholderText="Select start date"
+            />
+          </div>
+          <div className="form-group flex flex-col w-full sm:w-1/3">
+            <label htmlFor="end-date" className="mb-1">End Date:</label>
+            <DatePicker
+              id="end-date"
+              selected={endDate}
+              onChange={(date) => setEndDate(date)}
+              minDate={startDate}
+              maxDate={new Date()}
+              dateFormat="yyyy-MM-dd"
+              className="border rounded p-2 w-full"
+              placeholderText="Select end date"
+            />
+          </div>
         </div>
-        <div className="form-group flex flex-col">
-          <label htmlFor="start-date" className="mb-1">
-            Start Date:
-          </label>
-          <DatePicker
-            id="start-date"
-            selected={startDate}
-            onChange={(date) => setStartDate(date)}
-            maxDate={endDate || new Date()}
-            dateFormat="yyyy-MM-dd"
-            className="border rounded p-2"
-            placeholderText="Select start date"
-          />
-        </div>
-        <div className="form-group flex flex-col">
-          <label htmlFor="end-date" className="mb-1">
-            End Date:
-          </label>
-          <DatePicker
-            id="end-date"
-            selected={endDate}
-            onChange={(date) => setEndDate(date)}
-            minDate={startDate}
-            maxDate={new Date()}
-            dateFormat="yyyy-MM-dd"
-            className="border rounded p-2"
-            placeholderText="Select end date"
-          />
-        </div>
-        <div className="button-group flex gap-2 items-end">
+        {/* Row 2: Fetch & Export Buttons aligned with End Date */}
+        <div className="flex flex-row gap-2 justify-end items-end">
           <button
             className="fetch-btn bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
             onClick={handleFetch}
             disabled={isLoading}
+            style={{ marginBottom: 0 }}
           >
             {isLoading ? "Fetching..." : "Fetch Rates"}
           </button>
@@ -185,6 +185,7 @@ export default function ExchangeRateViewer({
             className="export-btn bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
             onClick={handleExport}
             disabled={results.length === 0 || isLoading}
+            style={{ marginBottom: 0 }}
           >
             Export CSV
           </button>
