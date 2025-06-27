@@ -1,26 +1,17 @@
 "use client";
 
 import React, { useState } from 'react';
-import { format } from 'date-fns';
-
-function formatDisplayDate(dateStr) {
-  try {
-    let date;
-    if (dateStr.includes('/')) {
-      const [day, month, year] = dateStr.split('/');
-      date = new Date(`${year}-${month}-${day}`);
-    } else {
-      date = new Date(dateStr);
-    }
-    return format(date, 'dd/MM/yyyy');
-  } catch (e) {
-    return dateStr;
-  }
-}
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { parse, isDate } from 'date-fns';
 
 export default function ExchangeRateViewer({ defaultStartDate, defaultEndDate }) {
-  const [startDate, setStartDate] = useState(defaultStartDate);
-  const [endDate, setEndDate] = useState(defaultEndDate);
+  const [startDate, setStartDate] = useState(
+    defaultStartDate ? (isDate(defaultStartDate) ? defaultStartDate : parse(defaultStartDate, 'yyyy-MM-dd', new Date())) : null
+  );
+  const [endDate, setEndDate] = useState(
+    defaultEndDate ? (isDate(defaultEndDate) ? defaultEndDate : parse(defaultEndDate, 'yyyy-MM-dd', new Date())) : null
+  );
   const [selectedBank, setSelectedBank] = useState('bidv');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,8 +28,8 @@ export default function ExchangeRateViewer({ defaultStartDate, defaultEndDate })
     setResults([]);
     setShowTable(false);
     try {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
+      const start = startDate;
+      const end = endDate;
       if (start > end) {
         setError('Start date cannot be after end date');
         setIsLoading(false);
@@ -110,25 +101,27 @@ export default function ExchangeRateViewer({ defaultStartDate, defaultEndDate })
         </div>
         <div className="form-group flex flex-col">
           <label htmlFor="start-date" className="mb-1">Start Date:</label>
-          <input
-            type="date"
+          <DatePicker
             id="start-date"
-            value={startDate}
-            max={endDate}
-            onChange={e => setStartDate(e.target.value)}
+            selected={startDate}
+            onChange={date => setStartDate(date)}
+            maxDate={endDate || new Date()}
+            dateFormat="yyyy-MM-dd"
             className="border rounded p-2"
+            placeholderText="Select start date"
           />
         </div>
         <div className="form-group flex flex-col">
           <label htmlFor="end-date" className="mb-1">End Date:</label>
-          <input
-            type="date"
+          <DatePicker
             id="end-date"
-            value={endDate}
-            min={startDate}
-            max={new Date().toISOString().split('T')[0]}
-            onChange={e => setEndDate(e.target.value)}
+            selected={endDate}
+            onChange={date => setEndDate(date)}
+            minDate={startDate}
+            maxDate={new Date()}
+            dateFormat="yyyy-MM-dd"
             className="border rounded p-2"
+            placeholderText="Select end date"
           />
         </div>
         <div className="button-group flex gap-2 items-end">
