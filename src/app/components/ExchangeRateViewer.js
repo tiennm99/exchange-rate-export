@@ -81,18 +81,18 @@ export default function ExchangeRateViewer({
     if (selectedBank === "bidv") {
       headers = [
         "Date",
-        "Currency",
+        "NameVI",
         "MuaTm",
         "MuaCk",
-        "Ban",
-        "NameVI",
+        "Currency",
         "NameEN",
+        "Ban",
       ];
       csvContent = headers.join(",") + "\n";
       csvContent += results
         .map(
           (row) =>
-            `"${row.date}","${row.currency}","${row.muaTm}","${row.muaCk}","${row.ban}","${row.nameVI}","${row.nameEN}"`
+            `"${row.date}","${row.nameVI}","${row.muaTm}","${row.muaCk}","${row.currency}","${row.nameEN}","${row.ban}"`
         )
         .join("\n");
     } else {
@@ -133,20 +133,27 @@ export default function ExchangeRateViewer({
         {/* Row 1: Start & End Date Pickers and Bank Select */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="form-group flex flex-col w-full sm:w-1/3">
-            <label htmlFor="bank" className="mb-1">Bank:</label>
+            <label htmlFor="bank" className="mb-1">
+              Bank:
+            </label>
             <select
               id="bank"
               value={selectedBank}
               onChange={(e) => setSelectedBank(e.target.value)}
               className="border rounded p-2 w-full theme-select"
-              style={{ background: 'var(--background)', color: 'var(--foreground)' }}
+              style={{
+                background: "var(--background)",
+                color: "var(--foreground)",
+              }}
             >
               <option value="bidv">BIDV</option>
               <option value="tcb">Techcombank</option>
             </select>
           </div>
           <div className="form-group flex flex-col w-full sm:w-1/3">
-            <label htmlFor="start-date" className="mb-1">Start Date:</label>
+            <label htmlFor="start-date" className="mb-1">
+              Start Date:
+            </label>
             <DatePicker
               id="start-date"
               selected={startDate}
@@ -158,7 +165,9 @@ export default function ExchangeRateViewer({
             />
           </div>
           <div className="form-group flex flex-col w-full sm:w-1/3">
-            <label htmlFor="end-date" className="mb-1">End Date:</label>
+            <label htmlFor="end-date" className="mb-1">
+              End Date:
+            </label>
             <DatePicker
               id="end-date"
               selected={endDate}
@@ -202,24 +211,24 @@ export default function ExchangeRateViewer({
               <thead>
                 <tr>
                   <th className="border px-2 py-1">Date</th>
-                  <th className="border px-2 py-1">Currency</th>
+                  <th className="border px-2 py-1">NameVI</th>
                   <th className="border px-2 py-1">MuaTm</th>
                   <th className="border px-2 py-1">MuaCk</th>
-                  <th className="border px-2 py-1">Ban</th>
-                  <th className="border px-2 py-1">NameVI</th>
+                  <th className="border px-2 py-1">Currency</th>
                   <th className="border px-2 py-1">NameEN</th>
+                  <th className="border px-2 py-1">Ban</th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((result, idx) => (
                   <tr key={idx}>
                     <td className="border px-2 py-1">{result.date}</td>
-                    <td className="border px-2 py-1">{result.currency}</td>
+                    <td className="border px-2 py-1">{result.nameVI}</td>
                     <td className="border px-2 py-1">{result.muaTm}</td>
                     <td className="border px-2 py-1">{result.muaCk}</td>
-                    <td className="border px-2 py-1">{result.ban}</td>
-                    <td className="border px-2 py-1">{result.nameVI}</td>
+                    <td className="border px-2 py-1">{result.currency}</td>
                     <td className="border px-2 py-1">{result.nameEN}</td>
+                    <td className="border px-2 py-1">{result.ban}</td>
                   </tr>
                 ))}
               </tbody>
