@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react";
 import ExchangeRateViewer from "./components/ExchangeRateViewer";
 import { format, subDays } from "date-fns";
-import { Analytics } from "@vercel/analytics/next"
 
 export default function Home() {
   const [defaultStartDate, setDefaultStartDate] = useState("");
@@ -25,7 +24,6 @@ export default function Home() {
           />
         )}
       </main>
-      <Analytics />
     </div>
   );
 }
