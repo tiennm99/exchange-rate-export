@@ -16,9 +16,7 @@ async function fetchBIDVRates(dateObj) {
   try {
     // First API call to get namerecord
     const timeUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet?date=${dateStr}`;
-    console.log("[BIDV] Request URL:", timeUrl);
     const timeRes = await axiosInstance.get(timeUrl);
-    console.log("[BIDV] Response:", JSON.stringify(timeRes.data));
     const timeData = timeRes.data;
     if (timeData.status !== 1 || !timeData.data?.length) return null;
     // Get the latest record
@@ -28,9 +26,7 @@ async function fetchBIDVRates(dateObj) {
     );
     // Second API call to get exchange rates
     const rateUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet?date=${dateStr}&time=${latest.namerecord}`;
-    console.log("[BIDV] Request URL:", rateUrl);
     const rateRes = await axiosInstance.get(rateUrl);
-    console.log("[BIDV] Response:", JSON.stringify(rateRes.data));
     const rateData = rateRes.data;
     if (rateData.status !== 1 || !rateData.data) return null;
     // Find USD data
@@ -56,9 +52,7 @@ async function fetchTCBRates(dateObj) {
   const dateStr = format(dateObj, "yyyy-MM-dd");
   const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
   try {
-    console.log("[TCB] Request URL:", url);
     const res = await axiosInstance.get(url);
-    console.log("[TCB] Response:", JSON.stringify(res.data));
     const data = res.data;
     if (!data.exchangeRate?.data) return null;
     // Find USD data
@@ -102,11 +96,9 @@ async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
     currentDate.setDate(currentDate.getDate() - 1);
     const dateStr = format(currentDate, 'yyyy-MM-dd');
     
-    console.log(`[DEBUG] Attempt ${attempt}: Trying previous day ${dateStr}`);
     
     // Try to find in cache first
     if (rateCache.has(dateStr)) {
-      console.log(`[DEBUG] Found cached data for ${dateStr}`);
       return rateCache.get(dateStr);
     }
     
@@ -120,7 +112,6 @@ async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
       }
       
       if (rate) {
-        console.log(`[DEBUG] Found data for ${dateStr} after ${attempt} attempts`);
         rateCache.set(dateStr, rate);
         return rate;
       }
@@ -129,14 +120,12 @@ async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
     }
   }
   
-  console.log(`[DEBUG] No data found after ${maxAttempts} attempts`);
   return null;
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    console.log("[POST] Payload:", JSON.stringify(body));
     const { startDate, endDate, bank } = body;
     if (!startDate || !endDate || !bank) {
       return new Response(
@@ -152,15 +141,12 @@ export async function POST(request) {
       let rate = null;
       const dateStr = format(date, 'yyyy-MM-dd');
       
-      console.log(`[DEBUG] Processing date: ${dateStr}`);
       
       try {
         if (bank === "bidv") {
           rate = await fetchBIDVRates(date);
-          console.log(`[DEBUG] BIDV rate for ${dateStr}:`, rate);
         } else if (bank === "tcb") {
           rate = await fetchTCBRates(date);
-          console.log(`[DEBUG] TCB rate for ${dateStr}:`, rate);
         }
         
         if (rate) {
@@ -168,7 +154,6 @@ export async function POST(request) {
           rateCache.set(dateStr, rate);
         } else {
           // No data for this date (likely weekend), try to get previous day's data
-          console.log(`No data for ${dateStr}, trying previous day...`);
           const prevRate = await getPreviousDayRate(date, bank, rateCache);
           if (prevRate) {
             // Create a new rate object with current date but previous day's data
@@ -177,9 +162,7 @@ export async function POST(request) {
               date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
             };
             results.push(filledRate);
-            console.log(`Filled ${dateStr} with previous day's data`);
           } else {
-            console.log(`No previous day data available for ${dateStr}`);
           }
         }
       } catch (error) {
@@ -192,11 +175,9 @@ export async function POST(request) {
             date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
           };
           results.push(filledRate);
-          console.log(`Filled ${dateStr} with previous day's data after error`);
         }
       }
     }
-    console.log("[POST] Response:", JSON.stringify({ data: results }));
     return new Response(JSON.stringify({ data: results }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
