@@ -94,6 +94,45 @@ function getDateRange(start, end) {
   return dates;
 }
 
+// Helper function to get previous business day rate with recursive search
+async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
+  let currentDate = new Date(date);
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    currentDate.setDate(currentDate.getDate() - 1);
+    const dateStr = format(currentDate, 'yyyy-MM-dd');
+    
+    console.log(`[DEBUG] Attempt ${attempt}: Trying previous day ${dateStr}`);
+    
+    // Try to find in cache first
+    if (rateCache.has(dateStr)) {
+      console.log(`[DEBUG] Found cached data for ${dateStr}`);
+      return rateCache.get(dateStr);
+    }
+    
+    // Fetch from API
+    let rate = null;
+    try {
+      if (bank === "bidv") {
+        rate = await fetchBIDVRates(currentDate);
+      } else if (bank === "tcb") {
+        rate = await fetchTCBRates(currentDate);
+      }
+      
+      if (rate) {
+        console.log(`[DEBUG] Found data for ${dateStr} after ${attempt} attempts`);
+        rateCache.set(dateStr, rate);
+        return rate;
+      }
+    } catch (error) {
+      console.error(`Error fetching rates for ${dateStr}:`, error);
+    }
+  }
+  
+  console.log(`[DEBUG] No data found after ${maxAttempts} attempts`);
+  return null;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -107,19 +146,54 @@ export async function POST(request) {
     }
     const dates = getDateRange(startDate, endDate);
     const results = [];
+    const rateCache = new Map(); // Cache to store rates we've fetched
+    
     for (const date of dates) {
       let rate = null;
+      const dateStr = format(date, 'yyyy-MM-dd');
+      
+      console.log(`[DEBUG] Processing date: ${dateStr}`);
+      
       try {
         if (bank === "bidv") {
           rate = await fetchBIDVRates(date);
+          console.log(`[DEBUG] BIDV rate for ${dateStr}:`, rate);
         } else if (bank === "tcb") {
           rate = await fetchTCBRates(date);
+          console.log(`[DEBUG] TCB rate for ${dateStr}:`, rate);
         }
+        
         if (rate) {
           results.push(rate);
+          rateCache.set(dateStr, rate);
+        } else {
+          // No data for this date (likely weekend), try to get previous day's data
+          console.log(`No data for ${dateStr}, trying previous day...`);
+          const prevRate = await getPreviousDayRate(date, bank, rateCache);
+          if (prevRate) {
+            // Create a new rate object with current date but previous day's data
+            const filledRate = {
+              ...prevRate,
+              date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
+            };
+            results.push(filledRate);
+            console.log(`Filled ${dateStr} with previous day's data`);
+          } else {
+            console.log(`No previous day data available for ${dateStr}`);
+          }
         }
       } catch (error) {
         console.error(`Error fetching rates for ${date}:`, error);
+        // Try to fill with previous day's data even on error
+        const prevRate = await getPreviousDayRate(date, bank, rateCache);
+        if (prevRate) {
+          const filledRate = {
+            ...prevRate,
+            date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
+          };
+          results.push(filledRate);
+          console.log(`Filled ${dateStr} with previous day's data after error`);
+        }
       }
     }
     console.log("[POST] Response:", JSON.stringify({ data: results }));
