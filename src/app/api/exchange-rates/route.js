@@ -105,7 +105,7 @@ export async function POST(request) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-    const dates = getDateRange(new Date(startDate), new Date(endDate));
+    const dates = getDateRange(startDate, endDate);
     const results = [];
     for (const date of dates) {
       let rate = null;
