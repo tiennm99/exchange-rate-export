@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { parse, isDate } from "date-fns";
+import { parse, isDate, format } from "date-fns";
 
 export default function ExchangeRateViewer({
   defaultStartDate,
@@ -52,8 +52,8 @@ export default function ExchangeRateViewer({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          startDate: start.toISOString().split("T")[0],
-          endDate: end.toISOString().split("T")[0],
+          startDate: format(start, 'yyyy-MM-dd'),
+          endDate: format(end, 'yyyy-MM-dd'),
           bank: selectedBank,
         }),
       });
