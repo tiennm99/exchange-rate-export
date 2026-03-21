@@ -3,102 +3,80 @@ import axios from "axios";
 import https from "https";
 import crypto from "crypto";
 
+// Configure axios with legacy SSL support
 const axiosInstance = axios.create({
   httpsAgent: new https.Agent({
     secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
   }),
 });
 
-const DISPLAY_DATE_FORMAT = "yyyy-MM-dd";
-const PARALLEL_CHUNK_SIZE = 5;
-const MAX_RETRIES = 2;
-const INITIAL_BACKOFF_MS = 500;
-
-// Retry a function with exponential backoff
-async function withRetry(fn, retries = MAX_RETRIES) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (attempt === retries) throw error;
-      const delay = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-}
-
-async function fetchBIDVRates(dateObj, currency) {
+// Helper function to fetch BIDV exchange rates
+async function fetchBIDVRates(dateObj) {
   const dateStr = format(dateObj, "dd/MM/yyyy");
   try {
+    // First API call to get namerecord
     const timeUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet?date=${dateStr}`;
-    const timeRes = await withRetry(() => axiosInstance.get(timeUrl));
+    const timeRes = await axiosInstance.get(timeUrl);
     const timeData = timeRes.data;
     if (timeData.status !== 1 || !timeData.data?.length) return null;
-
+    // Get the latest record
     const latest = timeData.data.reduce(
-      (best, current) => (current.time > best.time ? current : best),
+      (latest, current) => (current.time > latest.time ? current : latest),
       timeData.data[0]
     );
-
+    // Second API call to get exchange rates
     const rateUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet?date=${dateStr}&time=${latest.namerecord}`;
-    const rateRes = await withRetry(() => axiosInstance.get(rateUrl));
+    const rateRes = await axiosInstance.get(rateUrl);
     const rateData = rateRes.data;
     if (rateData.status !== 1 || !rateData.data) return null;
-
-    const displayDate = format(dateObj, DISPLAY_DATE_FORMAT);
-    const items = currency === "ALL"
-      ? rateData.data
-      : rateData.data.filter((item) => item.currency === currency);
-    if (items.length === 0) return null;
-
-    return items.map((item) => ({
-      date: displayDate,
-      nameVI: item.nameVI || "",
-      muaTm: item.muaTm || "",
-      muaCk: item.muaCk || "",
-      currency: item.currency || "",
-      nameEN: item.nameEN || "",
-      ban: item.ban || "",
-    }));
+    // Find USD data
+    const usd = rateData.data.find((item) => item.currency === "USD");
+    if (!usd) return null;
+    return {
+      date: dateStr,
+      nameVI: usd.nameVI || "",
+      muaTm: usd.muaTm || "",
+      muaCk: usd.muaCk || "",
+      currency: usd.currency || "USD",
+      nameEN: usd.nameEN || "",
+      ban: usd.ban || "",
+    };
   } catch (error) {
-    console.error("Error fetching BIDV rates:", error.message);
+    console.error("Error fetching BIDV rates:", error);
     return null;
   }
 }
 
-async function fetchTCBRates(dateObj, currency) {
+// Helper function to fetch TCB exchange rates
+async function fetchTCBRates(dateObj) {
   const dateStr = format(dateObj, "yyyy-MM-dd");
   const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
   try {
-    const res = await withRetry(() => axiosInstance.get(url));
+    const res = await axiosInstance.get(url);
     const data = res.data;
     if (!data.exchangeRate?.data) return null;
-
-    const items = currency === "ALL"
-      ? data.exchangeRate.data
-      : data.exchangeRate.data.filter((item) => item.sourceCurrency === currency);
-    if (items.length === 0) return null;
-
-    return items.map((item) => ({
+    // Find USD data
+    const usd = data.exchangeRate.data.find(
+      (item) => item.label === "USD (50,100)"
+    );
+    if (!usd) return null;
+    return {
       date: dateStr,
-      label: item.label || "",
-      askRate: item.askRate || "",
-      bidRateCK: item.bidRateCK || "",
-      bidRateTM: item.bidRateTM || "",
-      sourceCurrency: item.sourceCurrency || "",
-      targetCurrency: item.targetCurrency || "",
-      askRateTM: item.askRateTM || "",
-    }));
+      label: usd.label || "",
+      askRate: usd.askRate || "",
+      bidRateCK: usd.bidRateCK || "",
+      bidRateTM: usd.bidRateTM || "",
+      sourceCurrency: usd.sourceCurrency || "",
+      targetCurrency: usd.targetCurrency || "",
+      askRateTM: usd.askRateTM || "",
+    };
   } catch (error) {
-    console.error("Error fetching TCB rates:", error.message);
+    console.error("Error fetching TCB rates:", error);
     return null;
   }
 }
 
-function fetchRateForDate(dateObj, bank, currency) {
-  return bank === "bidv" ? fetchBIDVRates(dateObj, currency) : fetchTCBRates(dateObj, currency);
-}
-
+// Get date range between start and end dates
 function getDateRange(start, end) {
   const dates = [];
   let current = new Date(start);
@@ -110,82 +88,105 @@ function getDateRange(start, end) {
   return dates;
 }
 
-// Search backwards for the most recent available rate
-async function getPreviousDayRate(date, bank, currency, rateCache, maxAttempts = 30) {
+// Helper function to get previous business day rate with recursive search
+async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
   let currentDate = new Date(date);
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     currentDate.setDate(currentDate.getDate() - 1);
-    const dateStr = format(currentDate, "yyyy-MM-dd");
-
+    const dateStr = format(currentDate, 'yyyy-MM-dd');
+    
+    
+    // Try to find in cache first
     if (rateCache.has(dateStr)) {
       return rateCache.get(dateStr);
     }
-
-    const rates = await fetchRateForDate(currentDate, bank, currency);
-    if (rates) {
-      rateCache.set(dateStr, rates);
-      return rates;
-    }
-  }
-  return null;
-}
-
-// Fetch a chunk of dates in parallel, filling gaps with previous day data
-async function fetchChunk(dates, bank, currency, rateCache) {
-  const settled = await Promise.allSettled(
-    dates.map((date) => fetchRateForDate(date, bank, currency))
-  );
-
-  const results = [];
-  for (let i = 0; i < dates.length; i++) {
-    const date = dates[i];
-    const dateStr = format(date, "yyyy-MM-dd");
-    const outcome = settled[i];
-    let rates = outcome.status === "fulfilled" ? outcome.value : null;
-
-    if (rates) {
-      rateCache.set(dateStr, rates);
-      results.push(...rates);
-    } else {
-      // Weekend/holiday/error — fill with most recent available rate
-      const prevRates = await getPreviousDayRate(date, bank, currency, rateCache);
-      if (prevRates) {
-        const displayDate = format(date, DISPLAY_DATE_FORMAT);
-        results.push(...prevRates.map((r) => ({ ...r, date: displayDate })));
+    
+    // Fetch from API
+    let rate = null;
+    try {
+      if (bank === "bidv") {
+        rate = await fetchBIDVRates(currentDate);
+      } else if (bank === "tcb") {
+        rate = await fetchTCBRates(currentDate);
       }
+      
+      if (rate) {
+        rateCache.set(dateStr, rate);
+        return rate;
+      }
+    } catch (error) {
+      console.error(`Error fetching rates for ${dateStr}:`, error);
     }
   }
-  return results;
+  
+  return null;
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { startDate, endDate, bank, currency = "USD" } = body;
+    const { startDate, endDate, bank } = body;
     if (!startDate || !endDate || !bank) {
-      return Response.json(
-        { error: "Missing required parameters" },
-        { status: 400 }
+      return new Response(
+        JSON.stringify({ error: "Missing required parameters" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-
     const dates = getDateRange(startDate, endDate);
-    const rateCache = new Map();
     const results = [];
-
-    // Process dates in parallel chunks to avoid overwhelming upstream APIs
-    for (let i = 0; i < dates.length; i += PARALLEL_CHUNK_SIZE) {
-      const chunk = dates.slice(i, i + PARALLEL_CHUNK_SIZE);
-      const chunkResults = await fetchChunk(chunk, bank, currency, rateCache);
-      results.push(...chunkResults);
+    const rateCache = new Map(); // Cache to store rates we've fetched
+    
+    for (const date of dates) {
+      let rate = null;
+      const dateStr = format(date, 'yyyy-MM-dd');
+      
+      
+      try {
+        if (bank === "bidv") {
+          rate = await fetchBIDVRates(date);
+        } else if (bank === "tcb") {
+          rate = await fetchTCBRates(date);
+        }
+        
+        if (rate) {
+          results.push(rate);
+          rateCache.set(dateStr, rate);
+        } else {
+          // No data for this date (likely weekend), try to get previous day's data
+          const prevRate = await getPreviousDayRate(date, bank, rateCache);
+          if (prevRate) {
+            // Create a new rate object with current date but previous day's data
+            const filledRate = {
+              ...prevRate,
+              date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
+            };
+            results.push(filledRate);
+          } else {
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching rates for ${date}:`, error);
+        // Try to fill with previous day's data even on error
+        const prevRate = await getPreviousDayRate(date, bank, rateCache);
+        if (prevRate) {
+          const filledRate = {
+            ...prevRate,
+            date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
+          };
+          results.push(filledRate);
+        }
+      }
     }
-
-    return Response.json({ data: results, total: dates.length, chunks: Math.ceil(dates.length / PARALLEL_CHUNK_SIZE) });
+    return new Response(JSON.stringify({ data: results }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Server error:", error);
-    return Response.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
