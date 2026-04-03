@@ -12,7 +12,7 @@ const axiosInstance = axios.create({
 const DISPLAY_DATE_FORMAT = "yyyy-MM-dd";
 const PARALLEL_CHUNK_SIZE = 5;
 
-async function fetchBIDVRates(dateObj) {
+async function fetchBIDVRates(dateObj, currency) {
   const dateStr = format(dateObj, "dd/MM/yyyy");
   try {
     const timeUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet?date=${dateStr}`;
@@ -30,24 +30,28 @@ async function fetchBIDVRates(dateObj) {
     const rateData = rateRes.data;
     if (rateData.status !== 1 || !rateData.data) return null;
 
-    const usd = rateData.data.find((item) => item.currency === "USD");
-    if (!usd) return null;
-    return {
-      date: format(dateObj, DISPLAY_DATE_FORMAT),
-      nameVI: usd.nameVI || "",
-      muaTm: usd.muaTm || "",
-      muaCk: usd.muaCk || "",
-      currency: usd.currency || "USD",
-      nameEN: usd.nameEN || "",
-      ban: usd.ban || "",
-    };
+    const displayDate = format(dateObj, DISPLAY_DATE_FORMAT);
+    const items = currency === "ALL"
+      ? rateData.data
+      : rateData.data.filter((item) => item.currency === currency);
+    if (items.length === 0) return null;
+
+    return items.map((item) => ({
+      date: displayDate,
+      nameVI: item.nameVI || "",
+      muaTm: item.muaTm || "",
+      muaCk: item.muaCk || "",
+      currency: item.currency || "",
+      nameEN: item.nameEN || "",
+      ban: item.ban || "",
+    }));
   } catch (error) {
     console.error("Error fetching BIDV rates:", error.message);
     return null;
   }
 }
 
-async function fetchTCBRates(dateObj) {
+async function fetchTCBRates(dateObj, currency) {
   const dateStr = format(dateObj, "yyyy-MM-dd");
   const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
   try {
@@ -55,28 +59,29 @@ async function fetchTCBRates(dateObj) {
     const data = res.data;
     if (!data.exchangeRate?.data) return null;
 
-    const usd = data.exchangeRate.data.find(
-      (item) => item.label === "USD (50,100)"
-    );
-    if (!usd) return null;
-    return {
+    const items = currency === "ALL"
+      ? data.exchangeRate.data
+      : data.exchangeRate.data.filter((item) => item.sourceCurrency === currency);
+    if (items.length === 0) return null;
+
+    return items.map((item) => ({
       date: dateStr,
-      label: usd.label || "",
-      askRate: usd.askRate || "",
-      bidRateCK: usd.bidRateCK || "",
-      bidRateTM: usd.bidRateTM || "",
-      sourceCurrency: usd.sourceCurrency || "",
-      targetCurrency: usd.targetCurrency || "",
-      askRateTM: usd.askRateTM || "",
-    };
+      label: item.label || "",
+      askRate: item.askRate || "",
+      bidRateCK: item.bidRateCK || "",
+      bidRateTM: item.bidRateTM || "",
+      sourceCurrency: item.sourceCurrency || "",
+      targetCurrency: item.targetCurrency || "",
+      askRateTM: item.askRateTM || "",
+    }));
   } catch (error) {
     console.error("Error fetching TCB rates:", error.message);
     return null;
   }
 }
 
-function fetchRateForDate(dateObj, bank) {
-  return bank === "bidv" ? fetchBIDVRates(dateObj) : fetchTCBRates(dateObj);
+function fetchRateForDate(dateObj, bank, currency) {
+  return bank === "bidv" ? fetchBIDVRates(dateObj, currency) : fetchTCBRates(dateObj, currency);
 }
 
 function getDateRange(start, end) {
@@ -91,7 +96,7 @@ function getDateRange(start, end) {
 }
 
 // Search backwards for the most recent available rate
-async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
+async function getPreviousDayRate(date, bank, currency, rateCache, maxAttempts = 30) {
   let currentDate = new Date(date);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     currentDate.setDate(currentDate.getDate() - 1);
@@ -101,19 +106,19 @@ async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
       return rateCache.get(dateStr);
     }
 
-    const rate = await fetchRateForDate(currentDate, bank);
-    if (rate) {
-      rateCache.set(dateStr, rate);
-      return rate;
+    const rates = await fetchRateForDate(currentDate, bank, currency);
+    if (rates) {
+      rateCache.set(dateStr, rates);
+      return rates;
     }
   }
   return null;
 }
 
 // Fetch a chunk of dates in parallel, filling gaps with previous day data
-async function fetchChunk(dates, bank, rateCache) {
+async function fetchChunk(dates, bank, currency, rateCache) {
   const settled = await Promise.allSettled(
-    dates.map((date) => fetchRateForDate(date, bank))
+    dates.map((date) => fetchRateForDate(date, bank, currency))
   );
 
   const results = [];
@@ -121,16 +126,17 @@ async function fetchChunk(dates, bank, rateCache) {
     const date = dates[i];
     const dateStr = format(date, "yyyy-MM-dd");
     const outcome = settled[i];
-    let rate = outcome.status === "fulfilled" ? outcome.value : null;
+    let rates = outcome.status === "fulfilled" ? outcome.value : null;
 
-    if (rate) {
-      rateCache.set(dateStr, rate);
-      results.push(rate);
+    if (rates) {
+      rateCache.set(dateStr, rates);
+      results.push(...rates);
     } else {
       // Weekend/holiday/error — fill with most recent available rate
-      const prevRate = await getPreviousDayRate(date, bank, rateCache);
-      if (prevRate) {
-        results.push({ ...prevRate, date: format(date, DISPLAY_DATE_FORMAT) });
+      const prevRates = await getPreviousDayRate(date, bank, currency, rateCache);
+      if (prevRates) {
+        const displayDate = format(date, DISPLAY_DATE_FORMAT);
+        results.push(...prevRates.map((r) => ({ ...r, date: displayDate })));
       }
     }
   }
@@ -140,7 +146,7 @@ async function fetchChunk(dates, bank, rateCache) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { startDate, endDate, bank } = body;
+    const { startDate, endDate, bank, currency = "USD" } = body;
     if (!startDate || !endDate || !bank) {
       return Response.json(
         { error: "Missing required parameters" },
@@ -155,7 +161,7 @@ export async function POST(request) {
     // Process dates in parallel chunks to avoid overwhelming upstream APIs
     for (let i = 0; i < dates.length; i += PARALLEL_CHUNK_SIZE) {
       const chunk = dates.slice(i, i + PARALLEL_CHUNK_SIZE);
-      const chunkResults = await fetchChunk(chunk, bank, rateCache);
+      const chunkResults = await fetchChunk(chunk, bank, currency, rateCache);
       results.push(...chunkResults);
     }
 
