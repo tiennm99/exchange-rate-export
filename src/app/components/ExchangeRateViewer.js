@@ -205,6 +205,7 @@ export default function ExchangeRateViewer() {
       <div
         className="rounded-xl p-5 mb-6"
         style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        onKeyDown={(e) => { if (e.key === "Enter" && !isLoading) handleFetch(); }}
       >
         <div className="flex flex-col gap-4">
           {/* Inputs row */}
