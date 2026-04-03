@@ -5,10 +5,98 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parse, isDate, format } from "date-fns";
 
-export default function ExchangeRateViewer({
-  defaultStartDate,
-  defaultEndDate,
-}) {
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <p style={{ color: "var(--muted)" }}>Fetching exchange rates...</p>
+      </div>
+    </div>
+  );
+}
+
+function ErrorMessage({ message }) {
+  return (
+    <div
+      className="flex items-start gap-2 rounded-lg px-4 py-3 text-sm mb-4"
+      style={{
+        background: "rgba(239, 68, 68, 0.08)",
+        border: "1px solid rgba(239, 68, 68, 0.2)",
+        color: "#ef4444",
+      }}
+    >
+      <span className="shrink-0 mt-0.5">&#9888;</span>
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div
+      className="text-center py-12"
+      style={{ color: "var(--muted)" }}
+    >
+      <p className="text-lg mb-1">No results yet</p>
+      <p className="text-sm">Select a bank and date range, then click Fetch Rates.</p>
+    </div>
+  );
+}
+
+function RateTable({ results, selectedBank }) {
+  const bidvHeaders = ["Date", "Name (VI)", "Buy TM", "Buy CK", "Currency", "Name (EN)", "Sell"];
+  const tcbHeaders = ["Date", "Label", "Ask Rate", "Bid CK", "Bid TM", "Source", "Target", "Ask TM"];
+
+  const headers = selectedBank === "bidv" ? bidvHeaders : tcbHeaders;
+
+  const getRowCells = (row) => {
+    if (selectedBank === "bidv") {
+      return [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban];
+    }
+    return [row.date, row.label, row.askRate, row.bidRateCK, row.bidRateTM, row.sourceCurrency, row.targetCurrency, row.askRateTM];
+  };
+
+  return (
+    <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--card-border)" }}>
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr style={{ background: "var(--table-header-bg)" }}>
+            {headers.map((h) => (
+              <th
+                key={h}
+                className="px-3 py-2.5 text-left font-semibold whitespace-nowrap"
+                style={{ borderBottom: "1px solid var(--card-border)" }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((row, idx) => (
+            <tr
+              key={idx}
+              className={`transition-colors hover:!bg-[var(--table-row-hover)] ${idx % 2 !== 0 ? "bg-[var(--table-row-stripe)]" : ""}`}
+            >
+              {getRowCells(row).map((cell, i) => (
+                <td
+                  key={i}
+                  className="px-3 py-2 whitespace-nowrap"
+                  style={{ borderBottom: "1px solid var(--card-border)" }}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function ExchangeRateViewer({ defaultStartDate, defaultEndDate }) {
   const [startDate, setStartDate] = useState(
     defaultStartDate
       ? isDate(defaultStartDate)
@@ -39,21 +127,17 @@ export default function ExchangeRateViewer({
     setResults([]);
     setShowTable(false);
     try {
-      const start = startDate;
-      const end = endDate;
-      if (start > end) {
+      if (startDate > endDate) {
         setError("Start date cannot be after end date");
         setIsLoading(false);
         return;
       }
       const response = await fetch("/api/exchange-rates", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startDate: format(start, 'yyyy-MM-dd'),
-          endDate: format(end, 'yyyy-MM-dd'),
+          startDate: format(startDate, "yyyy-MM-dd"),
+          endDate: format(endDate, "yyyy-MM-dd"),
           bank: selectedBank,
         }),
       });
@@ -65,13 +149,18 @@ export default function ExchangeRateViewer({
       setResults(data.data || []);
       setShowTable(true);
     } catch (err) {
-      setError(
-        `An error occurred while fetching exchange rates: ${err.message}`
-      );
+      setError(`An error occurred while fetching exchange rates: ${err.message}`);
       console.error(err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const escapeCsv = (value) => {
+    const str = String(value ?? "");
+    const escaped = str.replace(/"/g, '""');
+    if (/^[=+\-@\t\r]/.test(escaped)) return `"'${escaped}"`;
+    return `"${escaped}"`;
   };
 
   const handleExport = () => {
@@ -79,196 +168,135 @@ export default function ExchangeRateViewer({
     let csvContent = "";
     let headers = [];
     if (selectedBank === "bidv") {
-      headers = [
-        "Date",
-        "NameVI",
-        "MuaTm",
-        "MuaCk",
-        "Currency",
-        "NameEN",
-        "Ban",
-      ];
+      headers = ["Date", "NameVI", "MuaTm", "MuaCk", "Currency", "NameEN", "Ban"];
       csvContent = headers.join(",") + "\n";
       csvContent += results
-        .map(
-          (row) =>
-            `"${row.date}","${row.nameVI}","${row.muaTm}","${row.muaCk}","${row.currency}","${row.nameEN}","${row.ban}"`
-        )
+        .map((row) => [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban].map(escapeCsv).join(","))
         .join("\n");
     } else {
-      headers = [
-        "Date",
-        "Label",
-        "AskRate",
-        "BidRateCK",
-        "BidRateTM",
-        "SourceCurrency",
-        "TargetCurrency",
-        "AskRateTM",
-      ];
+      headers = ["Date", "Label", "AskRate", "BidRateCK", "BidRateTM", "SourceCurrency", "TargetCurrency", "AskRateTM"];
       csvContent = headers.join(",") + "\n";
       csvContent += results
-        .map(
-          (row) =>
-            `"${row.date}","${row.label}","${row.askRate}","${row.bidRateCK}","${row.bidRateTM}","${row.sourceCurrency}","${row.targetCurrency}","${row.askRateTM}"`
-        )
+        .map((row) => [row.date, row.label, row.askRate, row.bidRateCK, row.bidRateTM, row.sourceCurrency, row.targetCurrency, row.askRateTM].map(escapeCsv).join(","))
         .join("\n");
     }
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `exchange_rates_${selectedBank}_${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
+    link.download = `exchange_rates_${selectedBank}_${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const inputStyle = {
+    background: "var(--input-bg)",
+    color: "var(--foreground)",
+    borderColor: "var(--input-border)",
   };
 
   return (
-    <div className="container mx-auto p-4 max-w-5xl w-full">
-      <h1 className="text-2xl font-bold mb-4">Exchange Rate Export</h1>
-      <div className="flex flex-col gap-4 mb-4">
-        {/* Row 1: Start & End Date Pickers and Bank Select */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="form-group flex flex-col w-full sm:w-1/3">
-            <label htmlFor="bank" className="mb-1">
-              Bank:
-            </label>
-            <select
-              id="bank"
-              value={selectedBank}
-              onChange={(e) => setSelectedBank(e.target.value)}
-              className="border rounded p-2 w-full theme-select"
-              style={{
-                background: "var(--background)",
-                color: "var(--foreground)",
-              }}
+    <div className="container mx-auto px-4 py-8 max-w-5xl w-full">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
+        <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
+          Fetch USD exchange rates from Vietnamese banks and export to CSV.
+        </p>
+      </div>
+
+      {/* Controls card */}
+      <div
+        className="rounded-xl p-5 mb-6"
+        style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+      >
+        <div className="flex flex-col gap-4">
+          {/* Inputs row */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col w-full sm:w-1/3">
+              <label htmlFor="bank" className="text-sm font-medium mb-1.5">
+                Bank
+              </label>
+              <select
+                id="bank"
+                value={selectedBank}
+                onChange={(e) => setSelectedBank(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                style={inputStyle}
+              >
+                <option value="bidv">BIDV</option>
+                <option value="tcb">Techcombank</option>
+              </select>
+            </div>
+            <div className="flex flex-col w-full sm:w-1/3">
+              <label htmlFor="start-date" className="text-sm font-medium mb-1.5">
+                Start Date
+              </label>
+              <DatePicker
+                id="start-date"
+                selected={startDate}
+                onChange={(date) => setStartDate(date)}
+                maxDate={endDate || new Date()}
+                dateFormat="yyyy-MM-dd"
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                placeholderText="Select start date"
+              />
+            </div>
+            <div className="flex flex-col w-full sm:w-1/3">
+              <label htmlFor="end-date" className="text-sm font-medium mb-1.5">
+                End Date
+              </label>
+              <DatePicker
+                id="end-date"
+                selected={endDate}
+                onChange={(date) => setEndDate(date)}
+                minDate={startDate}
+                maxDate={new Date()}
+                dateFormat="yyyy-MM-dd"
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                placeholderText="Select end date"
+              />
+            </div>
+          </div>
+
+          {/* Buttons row */}
+          <div className="flex flex-row gap-2 justify-end pt-1">
+            <button
+              className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              onClick={handleFetch}
+              disabled={isLoading}
             >
-              <option value="bidv">BIDV</option>
-              <option value="tcb">Techcombank</option>
-            </select>
+              {isLoading ? "Fetching..." : "Fetch Rates"}
+            </button>
+            <button
+              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              onClick={handleExport}
+              disabled={results.length === 0 || isLoading}
+            >
+              Export CSV
+            </button>
           </div>
-          <div className="form-group flex flex-col w-full sm:w-1/3">
-            <label htmlFor="start-date" className="mb-1">
-              Start Date:
-            </label>
-            <DatePicker
-              id="start-date"
-              selected={startDate}
-              onChange={(date) => setStartDate(date)}
-              maxDate={endDate || new Date()}
-              dateFormat="yyyy-MM-dd"
-              className="border rounded p-2 w-full"
-              placeholderText="Select start date"
-            />
-          </div>
-          <div className="form-group flex flex-col w-full sm:w-1/3">
-            <label htmlFor="end-date" className="mb-1">
-              End Date:
-            </label>
-            <DatePicker
-              id="end-date"
-              selected={endDate}
-              onChange={(date) => setEndDate(date)}
-              minDate={startDate}
-              maxDate={new Date()}
-              dateFormat="yyyy-MM-dd"
-              className="border rounded p-2 w-full"
-              placeholderText="Select end date"
-            />
-          </div>
-        </div>
-        {/* Row 2: Fetch & Export Buttons aligned with End Date */}
-        <div className="flex flex-row gap-2 justify-end items-end">
-          <button
-            className="fetch-btn bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-            onClick={handleFetch}
-            disabled={isLoading}
-            style={{ marginBottom: 0 }}
-          >
-            {isLoading ? "Fetching..." : "Fetch Rates"}
-          </button>
-          <button
-            className="export-btn bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
-            onClick={handleExport}
-            disabled={results.length === 0 || isLoading}
-            style={{ marginBottom: 0 }}
-          >
-            Export CSV
-          </button>
         </div>
       </div>
-      {error && <div className="error text-red-600 mb-2">{error}</div>}
-      {isLoading && (
-        <div className="loading mb-2">Loading data, please wait...</div>
-      )}
-      {showTable && (
-        <div className="table-container overflow-x-auto mt-4">
-          {selectedBank === "bidv" ? (
-            <table className="min-w-full border border-gray-300">
-              <thead>
-                <tr>
-                  <th className="border px-2 py-1">Date</th>
-                  <th className="border px-2 py-1">NameVI</th>
-                  <th className="border px-2 py-1">MuaTm</th>
-                  <th className="border px-2 py-1">MuaCk</th>
-                  <th className="border px-2 py-1">Currency</th>
-                  <th className="border px-2 py-1">NameEN</th>
-                  <th className="border px-2 py-1">Ban</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((result, idx) => (
-                  <tr key={idx}>
-                    <td className="border px-2 py-1">{result.date}</td>
-                    <td className="border px-2 py-1">{result.nameVI}</td>
-                    <td className="border px-2 py-1">{result.muaTm}</td>
-                    <td className="border px-2 py-1">{result.muaCk}</td>
-                    <td className="border px-2 py-1">{result.currency}</td>
-                    <td className="border px-2 py-1">{result.nameEN}</td>
-                    <td className="border px-2 py-1">{result.ban}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <table className="min-w-full border border-gray-300">
-              <thead>
-                <tr>
-                  <th className="border px-2 py-1">Date</th>
-                  <th className="border px-2 py-1">Label</th>
-                  <th className="border px-2 py-1">AskRate</th>
-                  <th className="border px-2 py-1">BidRateCK</th>
-                  <th className="border px-2 py-1">BidRateTM</th>
-                  <th className="border px-2 py-1">SourceCurrency</th>
-                  <th className="border px-2 py-1">TargetCurrency</th>
-                  <th className="border px-2 py-1">AskRateTM</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((result, idx) => (
-                  <tr key={idx}>
-                    <td className="border px-2 py-1">{result.date}</td>
-                    <td className="border px-2 py-1">{result.label}</td>
-                    <td className="border px-2 py-1">{result.askRate}</td>
-                    <td className="border px-2 py-1">{result.bidRateCK}</td>
-                    <td className="border px-2 py-1">{result.bidRateTM}</td>
-                    <td className="border px-2 py-1">
-                      {result.sourceCurrency}
-                    </td>
-                    <td className="border px-2 py-1">
-                      {result.targetCurrency}
-                    </td>
-                    <td className="border px-2 py-1">{result.askRateTM}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+
+      {/* Status area - announced to screen readers */}
+      <div aria-live="polite" aria-atomic="true">
+        {error && <ErrorMessage message={error} />}
+        {isLoading && <LoadingSpinner />}
+      {!isLoading && showTable && results.length === 0 && <EmptyState />}
+      {!isLoading && showTable && results.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              {results.length} {results.length === 1 ? "record" : "records"} found
+            </p>
+          </div>
+          <RateTable results={results} selectedBank={selectedBank} />
         </div>
       )}
+      </div>
     </div>
   );
 }
