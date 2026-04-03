@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { format, subDays } from "date-fns";
+import { format, subDays, startOfMonth } from "date-fns";
 
 function LoadingSpinner({ progress }) {
   return (
@@ -254,6 +254,26 @@ export default function ExchangeRateViewer() {
                 placeholderText="Select end date"
               />
             </div>
+          </div>
+
+          {/* Date presets */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: "Today", start: new Date(), end: new Date() },
+              { label: "Last 7 days", start: subDays(new Date(), 7), end: new Date() },
+              { label: "Last 30 days", start: subDays(new Date(), 30), end: new Date() },
+              { label: "This month", start: startOfMonth(new Date()), end: new Date() },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                className="text-xs px-3 py-1 rounded-md border transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                style={{ borderColor: "var(--input-border)", color: "var(--muted)" }}
+                onClick={() => { setStartDate(preset.start); setEndDate(preset.end); }}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
 
           {/* Buttons row */}
