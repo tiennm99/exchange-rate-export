@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format, subDays, startOfMonth } from "date-fns";
+import * as XLSX from "xlsx";
 
 function LoadingSpinner({ progress }) {
   return (
@@ -202,35 +203,36 @@ export default function ExchangeRateViewer() {
     handleFetch();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const escapeCsv = (value) => {
-    const str = String(value ?? "");
-    const escaped = str.replace(/"/g, '""');
-    if (/^[=+\-@\t\r]/.test(escaped)) return `"'${escaped}"`;
-    return `"${escaped}"`;
+  const getExportRows = () => {
+    if (selectedBank === "bidv") {
+      const headers = ["Date", "NameVI", "MuaTm", "MuaCk", "Currency", "NameEN", "Ban"];
+      const rows = results.map((row) => [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban]);
+      return [headers, ...rows];
+    }
+    const headers = ["Date", "Label", "AskRate", "BidRateCK", "BidRateTM", "SourceCurrency", "TargetCurrency", "AskRateTM"];
+    const rows = results.map((row) => [row.date, row.label, row.askRate, row.bidRateCK, row.bidRateTM, row.sourceCurrency, row.targetCurrency, row.askRateTM]);
+    return [headers, ...rows];
   };
 
-  const handleExport = () => {
+  const baseFilename = `exchange_rates_${selectedBank}_${selectedCurrency}_${new Date().toISOString().split("T")[0]}`;
+
+  const handleExportExcel = () => {
     if (results.length === 0) return;
-    let csvContent = "";
-    let headers = [];
-    if (selectedBank === "bidv") {
-      headers = ["Date", "NameVI", "MuaTm", "MuaCk", "Currency", "NameEN", "Ban"];
-      csvContent = headers.join(",") + "\n";
-      csvContent += results
-        .map((row) => [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban].map(escapeCsv).join(","))
-        .join("\n");
-    } else {
-      headers = ["Date", "Label", "AskRate", "BidRateCK", "BidRateTM", "SourceCurrency", "TargetCurrency", "AskRateTM"];
-      csvContent = headers.join(",") + "\n";
-      csvContent += results
-        .map((row) => [row.date, row.label, row.askRate, row.bidRateCK, row.bidRateTM, row.sourceCurrency, row.targetCurrency, row.askRateTM].map(escapeCsv).join(","))
-        .join("\n");
-    }
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const ws = XLSX.utils.aoa_to_sheet(getExportRows());
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Exchange Rates");
+    XLSX.writeFile(wb, `${baseFilename}.xlsx`);
+  };
+
+  const handleExportCsv = () => {
+    if (results.length === 0) return;
+    const ws = XLSX.utils.aoa_to_sheet(getExportRows());
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `exchange_rates_${selectedBank}_${selectedCurrency}_${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `${baseFilename}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -365,7 +367,15 @@ export default function ExchangeRateViewer() {
             </button>
             <button
               className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-              onClick={handleExport}
+              onClick={handleExportExcel}
+              disabled={results.length === 0 || isLoading}
+            >
+              Export Excel
+            </button>
+            <button
+              className="text-sm font-medium px-5 py-2 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              style={{ borderColor: "var(--input-border)", color: "var(--foreground)" }}
+              onClick={handleExportCsv}
               disabled={results.length === 0 || isLoading}
             >
               Export CSV
