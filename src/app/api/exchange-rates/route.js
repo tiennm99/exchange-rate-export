@@ -3,37 +3,37 @@ import axios from "axios";
 import https from "https";
 import crypto from "crypto";
 
-// Configure axios with legacy SSL support
 const axiosInstance = axios.create({
   httpsAgent: new https.Agent({
     secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
   }),
 });
 
-// Helper function to fetch BIDV exchange rates
+const DISPLAY_DATE_FORMAT = "yyyy-MM-dd";
+const PARALLEL_CHUNK_SIZE = 5;
+
 async function fetchBIDVRates(dateObj) {
   const dateStr = format(dateObj, "dd/MM/yyyy");
   try {
-    // First API call to get namerecord
     const timeUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet?date=${dateStr}`;
     const timeRes = await axiosInstance.get(timeUrl);
     const timeData = timeRes.data;
     if (timeData.status !== 1 || !timeData.data?.length) return null;
-    // Get the latest record
+
     const latest = timeData.data.reduce(
-      (latest, current) => (current.time > latest.time ? current : latest),
+      (best, current) => (current.time > best.time ? current : best),
       timeData.data[0]
     );
-    // Second API call to get exchange rates
+
     const rateUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet?date=${dateStr}&time=${latest.namerecord}`;
     const rateRes = await axiosInstance.get(rateUrl);
     const rateData = rateRes.data;
     if (rateData.status !== 1 || !rateData.data) return null;
-    // Find USD data
+
     const usd = rateData.data.find((item) => item.currency === "USD");
     if (!usd) return null;
     return {
-      date: dateStr,
+      date: format(dateObj, DISPLAY_DATE_FORMAT),
       nameVI: usd.nameVI || "",
       muaTm: usd.muaTm || "",
       muaCk: usd.muaCk || "",
@@ -42,12 +42,11 @@ async function fetchBIDVRates(dateObj) {
       ban: usd.ban || "",
     };
   } catch (error) {
-    console.error("Error fetching BIDV rates:", error);
+    console.error("Error fetching BIDV rates:", error.message);
     return null;
   }
 }
 
-// Helper function to fetch TCB exchange rates
 async function fetchTCBRates(dateObj) {
   const dateStr = format(dateObj, "yyyy-MM-dd");
   const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
@@ -55,7 +54,7 @@ async function fetchTCBRates(dateObj) {
     const res = await axiosInstance.get(url);
     const data = res.data;
     if (!data.exchangeRate?.data) return null;
-    // Find USD data
+
     const usd = data.exchangeRate.data.find(
       (item) => item.label === "USD (50,100)"
     );
@@ -71,12 +70,15 @@ async function fetchTCBRates(dateObj) {
       askRateTM: usd.askRateTM || "",
     };
   } catch (error) {
-    console.error("Error fetching TCB rates:", error);
+    console.error("Error fetching TCB rates:", error.message);
     return null;
   }
 }
 
-// Get date range between start and end dates
+function fetchRateForDate(dateObj, bank) {
+  return bank === "bidv" ? fetchBIDVRates(dateObj) : fetchTCBRates(dateObj);
+}
+
 function getDateRange(start, end) {
   const dates = [];
   let current = new Date(start);
@@ -88,39 +90,51 @@ function getDateRange(start, end) {
   return dates;
 }
 
-// Helper function to get previous business day rate with recursive search
+// Search backwards for the most recent available rate
 async function getPreviousDayRate(date, bank, rateCache, maxAttempts = 30) {
   let currentDate = new Date(date);
-  
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     currentDate.setDate(currentDate.getDate() - 1);
-    const dateStr = format(currentDate, 'yyyy-MM-dd');
-    
-    
-    // Try to find in cache first
+    const dateStr = format(currentDate, "yyyy-MM-dd");
+
     if (rateCache.has(dateStr)) {
       return rateCache.get(dateStr);
     }
-    
-    // Fetch from API
-    let rate = null;
-    try {
-      if (bank === "bidv") {
-        rate = await fetchBIDVRates(currentDate);
-      } else if (bank === "tcb") {
-        rate = await fetchTCBRates(currentDate);
-      }
-      
-      if (rate) {
-        rateCache.set(dateStr, rate);
-        return rate;
-      }
-    } catch (error) {
-      console.error(`Error fetching rates for ${dateStr}:`, error);
+
+    const rate = await fetchRateForDate(currentDate, bank);
+    if (rate) {
+      rateCache.set(dateStr, rate);
+      return rate;
     }
   }
-  
   return null;
+}
+
+// Fetch a chunk of dates in parallel, filling gaps with previous day data
+async function fetchChunk(dates, bank, rateCache) {
+  const settled = await Promise.allSettled(
+    dates.map((date) => fetchRateForDate(date, bank))
+  );
+
+  const results = [];
+  for (let i = 0; i < dates.length; i++) {
+    const date = dates[i];
+    const dateStr = format(date, "yyyy-MM-dd");
+    const outcome = settled[i];
+    let rate = outcome.status === "fulfilled" ? outcome.value : null;
+
+    if (rate) {
+      rateCache.set(dateStr, rate);
+      results.push(rate);
+    } else {
+      // Weekend/holiday/error — fill with most recent available rate
+      const prevRate = await getPreviousDayRate(date, bank, rateCache);
+      if (prevRate) {
+        results.push({ ...prevRate, date: format(date, DISPLAY_DATE_FORMAT) });
+      }
+    }
+  }
+  return results;
 }
 
 export async function POST(request) {
@@ -128,65 +142,29 @@ export async function POST(request) {
     const body = await request.json();
     const { startDate, endDate, bank } = body;
     if (!startDate || !endDate || !bank) {
-      return new Response(
-        JSON.stringify({ error: "Missing required parameters" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "Missing required parameters" },
+        { status: 400 }
       );
     }
+
     const dates = getDateRange(startDate, endDate);
+    const rateCache = new Map();
     const results = [];
-    const rateCache = new Map(); // Cache to store rates we've fetched
-    
-    for (const date of dates) {
-      let rate = null;
-      const dateStr = format(date, 'yyyy-MM-dd');
-      
-      
-      try {
-        if (bank === "bidv") {
-          rate = await fetchBIDVRates(date);
-        } else if (bank === "tcb") {
-          rate = await fetchTCBRates(date);
-        }
-        
-        if (rate) {
-          results.push(rate);
-          rateCache.set(dateStr, rate);
-        } else {
-          // No data for this date (likely weekend), try to get previous day's data
-          const prevRate = await getPreviousDayRate(date, bank, rateCache);
-          if (prevRate) {
-            // Create a new rate object with current date but previous day's data
-            const filledRate = {
-              ...prevRate,
-              date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
-            };
-            results.push(filledRate);
-          } else {
-          }
-        }
-      } catch (error) {
-        console.error(`Error fetching rates for ${date}:`, error);
-        // Try to fill with previous day's data even on error
-        const prevRate = await getPreviousDayRate(date, bank, rateCache);
-        if (prevRate) {
-          const filledRate = {
-            ...prevRate,
-            date: bank === "bidv" ? format(date, 'dd/MM/yyyy') : dateStr
-          };
-          results.push(filledRate);
-        }
-      }
+
+    // Process dates in parallel chunks to avoid overwhelming upstream APIs
+    for (let i = 0; i < dates.length; i += PARALLEL_CHUNK_SIZE) {
+      const chunk = dates.slice(i, i + PARALLEL_CHUNK_SIZE);
+      const chunkResults = await fetchChunk(chunk, bank, rateCache);
+      results.push(...chunkResults);
     }
-    return new Response(JSON.stringify({ data: results }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+
+    return Response.json({ data: results, total: dates.length });
   } catch (error) {
     console.error("Server error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return Response.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
