@@ -103,6 +103,7 @@ function loadSavedSettings() {
     const parsed = JSON.parse(saved);
     return {
       bank: parsed.bank || "bidv",
+      currency: parsed.currency || "USD",
       startDate: parsed.startDate ? new Date(parsed.startDate) : null,
       endDate: parsed.endDate ? new Date(parsed.endDate) : null,
     };
@@ -111,10 +112,11 @@ function loadSavedSettings() {
   }
 }
 
-function saveSettings(bank, startDate, endDate) {
+function saveSettings(bank, currency, startDate, endDate) {
   try {
     localStorage.setItem("exchangeRateSettings", JSON.stringify({
       bank,
+      currency,
       startDate: startDate?.toISOString(),
       endDate: endDate?.toISOString(),
     }));
@@ -134,6 +136,10 @@ export default function ExchangeRateViewer() {
     const saved = loadSavedSettings();
     return saved?.bank || "bidv";
   });
+  const [selectedCurrency, setSelectedCurrency] = useState(() => {
+    const saved = loadSavedSettings();
+    return saved?.currency || "USD";
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
@@ -142,8 +148,8 @@ export default function ExchangeRateViewer() {
 
   // Persist settings to localStorage
   useEffect(() => {
-    saveSettings(selectedBank, startDate, endDate);
-  }, [selectedBank, startDate, endDate]);
+    saveSettings(selectedBank, selectedCurrency, startDate, endDate);
+  }, [selectedBank, selectedCurrency, startDate, endDate]);
 
   const handleFetch = useCallback(async () => {
     if (!startDate || !endDate) {
@@ -167,6 +173,7 @@ export default function ExchangeRateViewer() {
           startDate: format(startDate, "yyyy-MM-dd"),
           endDate: format(endDate, "yyyy-MM-dd"),
           bank: selectedBank,
+          currency: selectedCurrency,
         }),
       });
       if (!response.ok) {
@@ -188,7 +195,7 @@ export default function ExchangeRateViewer() {
       setIsLoading(false);
       setProgress(null);
     }
-  }, [startDate, endDate, selectedBank]);
+  }, [startDate, endDate, selectedBank, selectedCurrency]);
 
   // Auto-fetch on initial load
   useEffect(() => {
@@ -223,7 +230,7 @@ export default function ExchangeRateViewer() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `exchange_rates_${selectedBank}_${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `exchange_rates_${selectedBank}_${selectedCurrency}_${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -242,7 +249,7 @@ export default function ExchangeRateViewer() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Fetch USD exchange rates from Vietnamese banks and export to CSV.
+          Fetch exchange rates from Vietnamese banks and export to CSV.
         </p>
       </div>
 
@@ -254,8 +261,8 @@ export default function ExchangeRateViewer() {
       >
         <div className="flex flex-col gap-4">
           {/* Inputs row */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex flex-col w-full sm:w-1/3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex flex-col">
               <label htmlFor="bank" className="text-sm font-medium mb-1.5">
                 Bank
               </label>
@@ -270,7 +277,33 @@ export default function ExchangeRateViewer() {
                 <option value="tcb">Techcombank</option>
               </select>
             </div>
-            <div className="flex flex-col w-full sm:w-1/3">
+            <div className="flex flex-col">
+              <label htmlFor="currency" className="text-sm font-medium mb-1.5">
+                Currency
+              </label>
+              <select
+                id="currency"
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                style={inputStyle}
+              >
+                <option value="ALL">All Currencies</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="JPY">JPY</option>
+                <option value="AUD">AUD</option>
+                <option value="CAD">CAD</option>
+                <option value="CHF">CHF</option>
+                <option value="SGD">SGD</option>
+                <option value="THB">THB</option>
+                <option value="HKD">HKD</option>
+                <option value="CNY">CNY</option>
+                <option value="KRW">KRW</option>
+              </select>
+            </div>
+            <div className="flex flex-col">
               <label htmlFor="start-date" className="text-sm font-medium mb-1.5">
                 Start Date
               </label>
@@ -284,7 +317,7 @@ export default function ExchangeRateViewer() {
                 placeholderText="Select start date"
               />
             </div>
-            <div className="flex flex-col w-full sm:w-1/3">
+            <div className="flex flex-col">
               <label htmlFor="end-date" className="text-sm font-medium mb-1.5">
                 End Date
               </label>
