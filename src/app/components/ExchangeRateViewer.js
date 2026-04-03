@@ -44,6 +44,48 @@ function EmptyState() {
   );
 }
 
+function ComparisonTable({ results }) {
+  const headers = ["Date", "Currency", "BIDV Buy TM", "BIDV Sell", "TCB Bid TM", "TCB Ask"];
+
+  return (
+    <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--card-border)" }}>
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr style={{ background: "var(--table-header-bg)" }}>
+            {headers.map((h) => (
+              <th
+                key={h}
+                className="px-3 py-2.5 text-left font-semibold whitespace-nowrap"
+                style={{ borderBottom: "1px solid var(--card-border)" }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((row, idx) => (
+            <tr
+              key={idx}
+              className={`transition-colors hover:!bg-[var(--table-row-hover)] ${idx % 2 !== 0 ? "bg-[var(--table-row-stripe)]" : ""}`}
+            >
+              {[row.date, row.currency, row.bidvBuyTm, row.bidvSell, row.tcbBidTm, row.tcbAsk].map((cell, i) => (
+                <td
+                  key={i}
+                  className="px-3 py-2 whitespace-nowrap"
+                  style={{ borderBottom: "1px solid var(--card-border)" }}
+                >
+                  {cell || "-"}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function RateTable({ results, selectedBank }) {
   const bidvHeaders = ["Date", "Name (VI)", "Buy TM", "Buy CK", "Currency", "Name (EN)", "Sell"];
   const tcbHeaders = ["Date", "Label", "Ask Rate", "Bid CK", "Bid TM", "Source", "Target", "Ask TM"];
@@ -141,6 +183,7 @@ export default function ExchangeRateViewer() {
     const saved = loadSavedSettings();
     return saved?.currency || "USD";
   });
+  const [compareMode, setCompareMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
@@ -151,6 +194,24 @@ export default function ExchangeRateViewer() {
   useEffect(() => {
     saveSettings(selectedBank, selectedCurrency, startDate, endDate);
   }, [selectedBank, selectedCurrency, startDate, endDate]);
+
+  const fetchBank = async (bank) => {
+    const response = await fetch("/api/exchange-rates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startDate: format(startDate, "yyyy-MM-dd"),
+        endDate: format(endDate, "yyyy-MM-dd"),
+        bank,
+        currency: selectedCurrency,
+      }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Failed to fetch ${bank} rates`);
+    }
+    return response.json();
+  };
 
   const handleFetch = useCallback(async () => {
     if (!startDate || !endDate) {
@@ -167,27 +228,26 @@ export default function ExchangeRateViewer() {
     setHasFetched(false);
     setProgress(null);
     try {
-      const response = await fetch("/api/exchange-rates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startDate: format(startDate, "yyyy-MM-dd"),
-          endDate: format(endDate, "yyyy-MM-dd"),
-          bank: selectedBank,
-          currency: selectedCurrency,
-        }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch exchange rates");
+      if (compareMode) {
+        const [bidvData, tcbData] = await Promise.all([fetchBank("bidv"), fetchBank("tcb")]);
+        // Merge by date + currency
+        const merged = new Map();
+        for (const row of (bidvData.data || [])) {
+          const key = `${row.date}|${row.currency}`;
+          merged.set(key, { date: row.date, currency: row.currency, bidvBuyTm: row.muaTm, bidvSell: row.ban });
+        }
+        for (const row of (tcbData.data || [])) {
+          const key = `${row.date}|${row.sourceCurrency}`;
+          const existing = merged.get(key) || { date: row.date, currency: row.sourceCurrency };
+          existing.tcbBidTm = row.bidRateTM;
+          existing.tcbAsk = row.askRate;
+          merged.set(key, existing);
+        }
+        setResults(Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date)));
+      } else {
+        const data = await fetchBank(selectedBank);
+        setResults(data.data || []);
       }
-
-      // Stream progress from response
-      const data = await response.json();
-      if (data.total) {
-        setProgress({ current: data.total, total: data.total });
-      }
-      setResults(data.data || []);
       setHasFetched(true);
     } catch (err) {
       setError(`An error occurred while fetching exchange rates: ${err.message}`);
@@ -196,7 +256,7 @@ export default function ExchangeRateViewer() {
       setIsLoading(false);
       setProgress(null);
     }
-  }, [startDate, endDate, selectedBank, selectedCurrency]);
+  }, [startDate, endDate, selectedBank, selectedCurrency, compareMode]);
 
   // Auto-fetch on initial load
   useEffect(() => {
@@ -204,6 +264,11 @@ export default function ExchangeRateViewer() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getExportRows = () => {
+    if (compareMode) {
+      const headers = ["Date", "Currency", "BIDV Buy TM", "BIDV Sell", "TCB Bid TM", "TCB Ask"];
+      const rows = results.map((row) => [row.date, row.currency, row.bidvBuyTm || "", row.bidvSell || "", row.tcbBidTm || "", row.tcbAsk || ""]);
+      return [headers, ...rows];
+    }
     if (selectedBank === "bidv") {
       const headers = ["Date", "NameVI", "MuaTm", "MuaCk", "Currency", "NameEN", "Ban"];
       const rows = results.map((row) => [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban]);
@@ -214,7 +279,7 @@ export default function ExchangeRateViewer() {
     return [headers, ...rows];
   };
 
-  const baseFilename = `exchange_rates_${selectedBank}_${selectedCurrency}_${new Date().toISOString().split("T")[0]}`;
+  const baseFilename = `exchange_rates_${compareMode ? "compare" : selectedBank}_${selectedCurrency}_${new Date().toISOString().split("T")[0]}`;
 
   const handleExportExcel = () => {
     if (results.length === 0) return;
@@ -272,7 +337,8 @@ export default function ExchangeRateViewer() {
                 id="bank"
                 value={selectedBank}
                 onChange={(e) => setSelectedBank(e.target.value)}
-                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                disabled={compareMode}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50"
                 style={inputStyle}
               >
                 <option value="bidv">BIDV</option>
@@ -336,8 +402,18 @@ export default function ExchangeRateViewer() {
             </div>
           </div>
 
-          {/* Date presets */}
-          <div className="flex flex-wrap gap-2">
+          {/* Compare toggle + Date presets */}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: "var(--muted)" }}>
+              <input
+                type="checkbox"
+                checked={compareMode}
+                onChange={(e) => setCompareMode(e.target.checked)}
+                className="rounded"
+              />
+              Compare BIDV vs TCB
+            </label>
+            <span style={{ color: "var(--card-border)" }}>|</span>
             {[
               { label: "Today", start: new Date(), end: new Date() },
               { label: "Last 7 days", start: subDays(new Date(), 7), end: new Date() },
@@ -396,7 +472,10 @@ export default function ExchangeRateViewer() {
                 {results.length} {results.length === 1 ? "record" : "records"} found
               </p>
             </div>
-            <RateTable results={results} selectedBank={selectedBank} />
+            {compareMode
+              ? <ComparisonTable results={results} />
+              : <RateTable results={results} selectedBank={selectedBank} />
+            }
           </div>
         )}
       </div>
