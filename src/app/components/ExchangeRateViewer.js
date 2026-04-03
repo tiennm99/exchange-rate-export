@@ -95,15 +95,55 @@ function RateTable({ results, selectedBank }) {
   );
 }
 
+function loadSavedSettings() {
+  if (typeof window === "undefined") return null;
+  try {
+    const saved = localStorage.getItem("exchangeRateSettings");
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    return {
+      bank: parsed.bank || "bidv",
+      startDate: parsed.startDate ? new Date(parsed.startDate) : null,
+      endDate: parsed.endDate ? new Date(parsed.endDate) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveSettings(bank, startDate, endDate) {
+  try {
+    localStorage.setItem("exchangeRateSettings", JSON.stringify({
+      bank,
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString(),
+    }));
+  } catch { /* ignore quota errors */ }
+}
+
 export default function ExchangeRateViewer() {
-  const [startDate, setStartDate] = useState(() => subDays(new Date(), 7));
-  const [endDate, setEndDate] = useState(() => new Date());
-  const [selectedBank, setSelectedBank] = useState("bidv");
+  const [startDate, setStartDate] = useState(() => {
+    const saved = loadSavedSettings();
+    return saved?.startDate || subDays(new Date(), 7);
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const saved = loadSavedSettings();
+    return saved?.endDate || new Date();
+  });
+  const [selectedBank, setSelectedBank] = useState(() => {
+    const saved = loadSavedSettings();
+    return saved?.bank || "bidv";
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [progress, setProgress] = useState(null);
+
+  // Persist settings to localStorage
+  useEffect(() => {
+    saveSettings(selectedBank, startDate, endDate);
+  }, [selectedBank, startDate, endDate]);
 
   const handleFetch = useCallback(async () => {
     if (!startDate || !endDate) {
