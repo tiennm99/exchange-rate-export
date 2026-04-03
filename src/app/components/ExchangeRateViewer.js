@@ -5,138 +5,9 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format, subDays, startOfMonth } from "date-fns";
 import * as XLSX from "xlsx";
-
-function LoadingSpinner({ progress }) {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-        <p style={{ color: "var(--muted)" }}>
-          {progress ? `Fetching ${progress.current}/${progress.total} days...` : "Fetching exchange rates..."}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ErrorMessage({ message }) {
-  return (
-    <div
-      className="flex items-start gap-2 rounded-lg px-4 py-3 text-sm mb-4"
-      style={{
-        background: "rgba(239, 68, 68, 0.08)",
-        border: "1px solid rgba(239, 68, 68, 0.2)",
-        color: "#ef4444",
-      }}
-    >
-      <span className="shrink-0 mt-0.5">&#9888;</span>
-      <span>{message}</span>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="text-center py-12" style={{ color: "var(--muted)" }}>
-      <p className="text-lg mb-1">No results yet</p>
-      <p className="text-sm">Select a bank and date range, then click Fetch Rates.</p>
-    </div>
-  );
-}
-
-function ComparisonTable({ results }) {
-  const headers = ["Date", "Currency", "BIDV Buy TM", "BIDV Sell", "TCB Bid TM", "TCB Ask"];
-
-  return (
-    <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--card-border)" }}>
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr style={{ background: "var(--table-header-bg)" }}>
-            {headers.map((h) => (
-              <th
-                key={h}
-                className="px-3 py-2.5 text-left font-semibold whitespace-nowrap"
-                style={{ borderBottom: "1px solid var(--card-border)" }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((row, idx) => (
-            <tr
-              key={idx}
-              className={`transition-colors hover:!bg-[var(--table-row-hover)] ${idx % 2 !== 0 ? "bg-[var(--table-row-stripe)]" : ""}`}
-            >
-              {[row.date, row.currency, row.bidvBuyTm, row.bidvSell, row.tcbBidTm, row.tcbAsk].map((cell, i) => (
-                <td
-                  key={i}
-                  className="px-3 py-2 whitespace-nowrap"
-                  style={{ borderBottom: "1px solid var(--card-border)" }}
-                >
-                  {cell || "-"}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function RateTable({ results, selectedBank }) {
-  const bidvHeaders = ["Date", "Name (VI)", "Buy TM", "Buy CK", "Currency", "Name (EN)", "Sell"];
-  const tcbHeaders = ["Date", "Label", "Ask Rate", "Bid CK", "Bid TM", "Source", "Target", "Ask TM"];
-
-  const headers = selectedBank === "bidv" ? bidvHeaders : tcbHeaders;
-
-  const getRowCells = (row) => {
-    if (selectedBank === "bidv") {
-      return [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban];
-    }
-    return [row.date, row.label, row.askRate, row.bidRateCK, row.bidRateTM, row.sourceCurrency, row.targetCurrency, row.askRateTM];
-  };
-
-  return (
-    <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--card-border)" }}>
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr style={{ background: "var(--table-header-bg)" }}>
-            {headers.map((h) => (
-              <th
-                key={h}
-                className="px-3 py-2.5 text-left font-semibold whitespace-nowrap"
-                style={{ borderBottom: "1px solid var(--card-border)" }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((row, idx) => (
-            <tr
-              key={idx}
-              className={`transition-colors hover:!bg-[var(--table-row-hover)] ${idx % 2 !== 0 ? "bg-[var(--table-row-stripe)]" : ""}`}
-            >
-              {getRowCells(row).map((cell, i) => (
-                <td
-                  key={i}
-                  className="px-3 py-2 whitespace-nowrap"
-                  style={{ borderBottom: "1px solid var(--card-border)" }}
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+import { LoadingSpinner, ErrorMessage, EmptyState } from "./exchange-rate-status";
+import { RateTable, ComparisonTable } from "./exchange-rate-table";
+import { RateTrendChart } from "./exchange-rate-chart";
 
 function loadSavedSettings() {
   if (typeof window === "undefined") return null;
@@ -166,31 +37,31 @@ function saveSettings(bank, currency, startDate, endDate) {
   } catch { /* ignore quota errors */ }
 }
 
+const CURRENCY_OPTIONS = [
+  "ALL", "USD", "EUR", "GBP", "JPY", "AUD",
+  "CAD", "CHF", "SGD", "THB", "HKD", "CNY", "KRW",
+];
+
+const DATE_PRESETS = [
+  { label: "Today", start: () => new Date(), end: () => new Date() },
+  { label: "Last 7 days", start: () => subDays(new Date(), 7), end: () => new Date() },
+  { label: "Last 30 days", start: () => subDays(new Date(), 30), end: () => new Date() },
+  { label: "This month", start: () => startOfMonth(new Date()), end: () => new Date() },
+];
+
 export default function ExchangeRateViewer() {
-  const [startDate, setStartDate] = useState(() => {
-    const saved = loadSavedSettings();
-    return saved?.startDate || subDays(new Date(), 7);
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const saved = loadSavedSettings();
-    return saved?.endDate || new Date();
-  });
-  const [selectedBank, setSelectedBank] = useState(() => {
-    const saved = loadSavedSettings();
-    return saved?.bank || "bidv";
-  });
-  const [selectedCurrency, setSelectedCurrency] = useState(() => {
-    const saved = loadSavedSettings();
-    return saved?.currency || "USD";
-  });
+  const [startDate, setStartDate] = useState(() => loadSavedSettings()?.startDate || subDays(new Date(), 7));
+  const [endDate, setEndDate] = useState(() => loadSavedSettings()?.endDate || new Date());
+  const [selectedBank, setSelectedBank] = useState(() => loadSavedSettings()?.bank || "bidv");
+  const [selectedCurrency, setSelectedCurrency] = useState(() => loadSavedSettings()?.currency || "USD");
   const [compareMode, setCompareMode] = useState(false);
+  const [showChart, setShowChart] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [progress, setProgress] = useState(null);
 
-  // Persist settings to localStorage
   useEffect(() => {
     saveSettings(selectedBank, selectedCurrency, startDate, endDate);
   }, [selectedBank, selectedCurrency, startDate, endDate]);
@@ -230,7 +101,6 @@ export default function ExchangeRateViewer() {
     try {
       if (compareMode) {
         const [bidvData, tcbData] = await Promise.all([fetchBank("bidv"), fetchBank("tcb")]);
-        // Merge by date + currency
         const merged = new Map();
         for (const row of (bidvData.data || [])) {
           const key = `${row.date}|${row.currency}`;
@@ -258,7 +128,6 @@ export default function ExchangeRateViewer() {
     }
   }, [startDate, endDate, selectedBank, selectedCurrency, compareMode]);
 
-  // Auto-fetch on initial load
   useEffect(() => {
     handleFetch();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -266,17 +135,14 @@ export default function ExchangeRateViewer() {
   const getExportRows = () => {
     if (compareMode) {
       const headers = ["Date", "Currency", "BIDV Buy TM", "BIDV Sell", "TCB Bid TM", "TCB Ask"];
-      const rows = results.map((row) => [row.date, row.currency, row.bidvBuyTm || "", row.bidvSell || "", row.tcbBidTm || "", row.tcbAsk || ""]);
-      return [headers, ...rows];
+      return [headers, ...results.map((r) => [r.date, r.currency, r.bidvBuyTm || "", r.bidvSell || "", r.tcbBidTm || "", r.tcbAsk || ""])];
     }
     if (selectedBank === "bidv") {
       const headers = ["Date", "NameVI", "MuaTm", "MuaCk", "Currency", "NameEN", "Ban"];
-      const rows = results.map((row) => [row.date, row.nameVI, row.muaTm, row.muaCk, row.currency, row.nameEN, row.ban]);
-      return [headers, ...rows];
+      return [headers, ...results.map((r) => [r.date, r.nameVI, r.muaTm, r.muaCk, r.currency, r.nameEN, r.ban])];
     }
     const headers = ["Date", "Label", "AskRate", "BidRateCK", "BidRateTM", "SourceCurrency", "TargetCurrency", "AskRateTM"];
-    const rows = results.map((row) => [row.date, row.label, row.askRate, row.bidRateCK, row.bidRateTM, row.sourceCurrency, row.targetCurrency, row.askRateTM]);
-    return [headers, ...rows];
+    return [headers, ...results.map((r) => [r.date, r.label, r.askRate, r.bidRateCK, r.bidRateTM, r.sourceCurrency, r.targetCurrency, r.askRateTM])];
   };
 
   const baseFilename = `exchange_rates_${compareMode ? "compare" : selectedBank}_${selectedCurrency}_${new Date().toISOString().split("T")[0]}`;
@@ -312,7 +178,6 @@ export default function ExchangeRateViewer() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl w-full">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
@@ -320,19 +185,15 @@ export default function ExchangeRateViewer() {
         </p>
       </div>
 
-      {/* Controls card */}
       <div
         className="rounded-xl p-5 mb-6"
         style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         onKeyDown={(e) => { if (e.key === "Enter" && !isLoading) handleFetch(); }}
       >
         <div className="flex flex-col gap-4">
-          {/* Inputs row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="flex flex-col">
-              <label htmlFor="bank" className="text-sm font-medium mb-1.5">
-                Bank
-              </label>
+              <label htmlFor="bank" className="text-sm font-medium mb-1.5">Bank</label>
               <select
                 id="bank"
                 value={selectedBank}
@@ -346,9 +207,7 @@ export default function ExchangeRateViewer() {
               </select>
             </div>
             <div className="flex flex-col">
-              <label htmlFor="currency" className="text-sm font-medium mb-1.5">
-                Currency
-              </label>
+              <label htmlFor="currency" className="text-sm font-medium mb-1.5">Currency</label>
               <select
                 id="currency"
                 value={selectedCurrency}
@@ -356,25 +215,13 @@ export default function ExchangeRateViewer() {
                 className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 style={inputStyle}
               >
-                <option value="ALL">All Currencies</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="GBP">GBP</option>
-                <option value="JPY">JPY</option>
-                <option value="AUD">AUD</option>
-                <option value="CAD">CAD</option>
-                <option value="CHF">CHF</option>
-                <option value="SGD">SGD</option>
-                <option value="THB">THB</option>
-                <option value="HKD">HKD</option>
-                <option value="CNY">CNY</option>
-                <option value="KRW">KRW</option>
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c === "ALL" ? "All Currencies" : c}</option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col">
-              <label htmlFor="start-date" className="text-sm font-medium mb-1.5">
-                Start Date
-              </label>
+              <label htmlFor="start-date" className="text-sm font-medium mb-1.5">Start Date</label>
               <DatePicker
                 id="start-date"
                 selected={startDate}
@@ -386,9 +233,7 @@ export default function ExchangeRateViewer() {
               />
             </div>
             <div className="flex flex-col">
-              <label htmlFor="end-date" className="text-sm font-medium mb-1.5">
-                End Date
-              </label>
+              <label htmlFor="end-date" className="text-sm font-medium mb-1.5">End Date</label>
               <DatePicker
                 id="end-date"
                 selected={endDate}
@@ -402,37 +247,29 @@ export default function ExchangeRateViewer() {
             </div>
           </div>
 
-          {/* Compare toggle + Date presets */}
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: "var(--muted)" }}>
-              <input
-                type="checkbox"
-                checked={compareMode}
-                onChange={(e) => setCompareMode(e.target.checked)}
-                className="rounded"
-              />
+              <input type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)} className="rounded" />
               Compare BIDV vs TCB
             </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: "var(--muted)" }}>
+              <input type="checkbox" checked={showChart} onChange={(e) => setShowChart(e.target.checked)} className="rounded" />
+              Show Chart
+            </label>
             <span style={{ color: "var(--card-border)" }}>|</span>
-            {[
-              { label: "Today", start: new Date(), end: new Date() },
-              { label: "Last 7 days", start: subDays(new Date(), 7), end: new Date() },
-              { label: "Last 30 days", start: subDays(new Date(), 30), end: new Date() },
-              { label: "This month", start: startOfMonth(new Date()), end: new Date() },
-            ].map((preset) => (
+            {DATE_PRESETS.map((preset) => (
               <button
                 key={preset.label}
                 type="button"
                 className="text-xs px-3 py-1 rounded-md border transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20"
                 style={{ borderColor: "var(--input-border)", color: "var(--muted)" }}
-                onClick={() => { setStartDate(preset.start); setEndDate(preset.end); }}
+                onClick={() => { setStartDate(preset.start()); setEndDate(preset.end()); }}
               >
                 {preset.label}
               </button>
             ))}
           </div>
 
-          {/* Buttons row */}
           <div className="flex flex-row gap-2 justify-end pt-1">
             <button
               className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -460,7 +297,6 @@ export default function ExchangeRateViewer() {
         </div>
       </div>
 
-      {/* Status area - announced to screen readers */}
       <div aria-live="polite" aria-atomic="true">
         {error && <ErrorMessage message={error} />}
         {isLoading && <LoadingSpinner progress={progress} />}
@@ -472,6 +308,9 @@ export default function ExchangeRateViewer() {
                 {results.length} {results.length === 1 ? "record" : "records"} found
               </p>
             </div>
+            {showChart && (
+              <RateTrendChart results={results} selectedBank={selectedBank} compareMode={compareMode} />
+            )}
             {compareMode
               ? <ComparisonTable results={results} />
               : <RateTable results={results} selectedBank={selectedBank} />
