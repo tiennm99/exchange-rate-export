@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format, subDays, startOfMonth } from "date-fns";
@@ -105,7 +105,7 @@ export default function ExchangeRateViewer() {
   const [hasFetched, setHasFetched] = useState(false);
   const [progress, setProgress] = useState(null);
 
-  const handleFetch = async () => {
+  const handleFetch = useCallback(async () => {
     if (!startDate || !endDate) {
       setError("Please select both start and end dates");
       return;
@@ -148,7 +148,12 @@ export default function ExchangeRateViewer() {
       setIsLoading(false);
       setProgress(null);
     }
-  };
+  }, [startDate, endDate, selectedBank]);
+
+  // Auto-fetch on initial load
+  useEffect(() => {
+    handleFetch();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const escapeCsv = (value) => {
     const str = String(value ?? "");
