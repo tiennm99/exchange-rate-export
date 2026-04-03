@@ -11,11 +11,9 @@ function parseRate(val) {
 }
 
 export function RateTrendChart({ results, selectedBank, compareMode }) {
-  // Build chart data from results
   const chartData = [];
 
   if (compareMode) {
-    // Group by date, show BIDV sell vs TCB ask
     const byDate = new Map();
     for (const row of results) {
       if (!byDate.has(row.date)) byDate.set(row.date, {});
@@ -49,7 +47,6 @@ export function RateTrendChart({ results, selectedBank, compareMode }) {
 
   if (chartData.length === 0) return null;
 
-  // Collect all numeric keys for lines
   const lineKeys = new Set();
   for (const row of chartData) {
     for (const key of Object.keys(row)) {
@@ -60,10 +57,7 @@ export function RateTrendChart({ results, selectedBank, compareMode }) {
   const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
   return (
-    <div
-      className="rounded-lg p-4 mb-4"
-      style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-    >
+    <div className="rounded-lg p-4 mb-4 bg-[var(--card-bg)] border border-[var(--card-border)]">
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" />
@@ -76,6 +70,7 @@ export function RateTrendChart({ results, selectedBank, compareMode }) {
             tick={{ fontSize: 11, fill: "var(--muted)" }}
             tickLine={false}
             domain={["auto", "auto"]}
+            label={{ value: "VND", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "var(--muted)" } }}
           />
           <Tooltip
             contentStyle={{
