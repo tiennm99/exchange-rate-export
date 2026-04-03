@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #f8fafc;
   --foreground: #171717;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-focus: #3b82f6;
+  --table-header-bg: #f1f5f9;
+  --table-row-hover: #e2e8f0;
+  --table-row-stripe: #f1f5f9;
+  --muted: #64748b;
 }
 
 @theme inline {
@@ -16,6 +25,15 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --card-bg: #18181b;
+    --card-border: #27272a;
+    --input-bg: #1e1e22;
+    --input-border: #3f3f46;
+    --input-focus: #60a5fa;
+    --table-header-bg: #1e1e22;
+    --table-row-hover: #27272a;
+    --table-row-stripe: #141416;
+    --muted: #a1a1aa;
   }
 }
 
@@ -23,4 +41,61 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Date picker dark mode support */
+.react-datepicker-wrapper {
+  width: 100%;
+}
+
+.react-datepicker__input-container input {
+  background: var(--input-bg) !important;
+  color: var(--foreground) !important;
+  border-color: var(--input-border) !important;
+}
+
+.react-datepicker {
+  background-color: var(--card-bg) !important;
+  border-color: var(--card-border) !important;
+  color: var(--foreground) !important;
+  font-family: inherit !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+.react-datepicker__header {
+  background-color: var(--table-header-bg) !important;
+  border-bottom-color: var(--card-border) !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker__day-name {
+  color: var(--foreground) !important;
+}
+
+.react-datepicker__day {
+  color: var(--foreground) !important;
+  border-radius: 6px !important;
+}
+
+.react-datepicker__day:hover {
+  background-color: var(--table-row-hover) !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background-color: #3b82f6 !important;
+  color: #fff !important;
+}
+
+.react-datepicker__day--disabled {
+  color: var(--muted) !important;
+  opacity: 0.4;
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: var(--muted) !important;
+}
+
+.react-datepicker__triangle {
+  display: none !important;
 }
