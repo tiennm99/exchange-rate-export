@@ -11,12 +11,27 @@ const axiosInstance = axios.create({
 
 const DISPLAY_DATE_FORMAT = "yyyy-MM-dd";
 const PARALLEL_CHUNK_SIZE = 5;
+const MAX_RETRIES = 2;
+const INITIAL_BACKOFF_MS = 500;
+
+// Retry a function with exponential backoff
+async function withRetry(fn, retries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === retries) throw error;
+      const delay = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 async function fetchBIDVRates(dateObj, currency) {
   const dateStr = format(dateObj, "dd/MM/yyyy");
   try {
     const timeUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailSearchTimeServlet?date=${dateStr}`;
-    const timeRes = await axiosInstance.get(timeUrl);
+    const timeRes = await withRetry(() => axiosInstance.get(timeUrl));
     const timeData = timeRes.data;
     if (timeData.status !== 1 || !timeData.data?.length) return null;
 
@@ -26,7 +41,7 @@ async function fetchBIDVRates(dateObj, currency) {
     );
 
     const rateUrl = `https://bidv.com.vn/ServicesBIDV/ExchangeDetailServlet?date=${dateStr}&time=${latest.namerecord}`;
-    const rateRes = await axiosInstance.get(rateUrl);
+    const rateRes = await withRetry(() => axiosInstance.get(rateUrl));
     const rateData = rateRes.data;
     if (rateData.status !== 1 || !rateData.data) return null;
 
@@ -55,7 +70,7 @@ async function fetchTCBRates(dateObj, currency) {
   const dateStr = format(dateObj, "yyyy-MM-dd");
   const url = `https://techcombank.com/content/techcombank/web/vn/vi/cong-cu-tien-ich/ty-gia/_jcr_content.exchange-rates.${dateStr}.integration.json`;
   try {
-    const res = await axiosInstance.get(url);
+    const res = await withRetry(() => axiosInstance.get(url));
     const data = res.data;
     if (!data.exchangeRate?.data) return null;
 
