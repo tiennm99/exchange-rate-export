@@ -180,7 +180,7 @@ export async function POST(request) {
       results.push(...chunkResults);
     }
 
-    return Response.json({ data: results, total: dates.length });
+    return Response.json({ data: results, total: dates.length, chunks: Math.ceil(dates.length / PARALLEL_CHUNK_SIZE) });
   } catch (error) {
     console.error("Server error:", error);
     return Response.json(
