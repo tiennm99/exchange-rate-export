@@ -9,6 +9,23 @@ import { LoadingSpinner, ErrorMessage, EmptyState } from "./exchange-rate-status
 import { RateTable, ComparisonTable } from "./exchange-rate-table";
 import { RateTrendChart } from "./exchange-rate-chart";
 
+// Read state from URL search params (takes priority over localStorage)
+function loadFromUrl() {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const bank = params.get("bank");
+  const currency = params.get("currency");
+  const start = params.get("start");
+  const end = params.get("end");
+  if (!bank && !currency && !start && !end) return null;
+  return {
+    bank: bank || null,
+    currency: currency || null,
+    startDate: start ? new Date(start) : null,
+    endDate: end ? new Date(end) : null,
+  };
+}
+
 function loadSavedSettings() {
   if (typeof window === "undefined") return null;
   try {
@@ -97,10 +114,11 @@ export default function ExchangeRateViewer() {
   const [hasFetched, setHasFetched] = useState(false);
   const [progress, setProgress] = useState(null);
 
-  // Restore saved settings on client mount only (avoids SSR hydration mismatch)
+  // Restore saved settings on client mount — URL params take priority over localStorage
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    const saved = loadSavedSettings();
+    const urlSettings = loadFromUrl();
+    const saved = urlSettings || loadSavedSettings();
     if (saved) {
       if (saved.bank) setSelectedBank(saved.bank);
       if (saved.currency) setSelectedCurrency(saved.currency);
@@ -110,9 +128,16 @@ export default function ExchangeRateViewer() {
     setHydrated(true);
   }, []);
 
+  // Sync state to both localStorage and URL
   useEffect(() => {
     if (!hydrated) return;
     saveSettings(selectedBank, selectedCurrency, startDate, endDate);
+    const params = new URLSearchParams();
+    params.set("bank", selectedBank);
+    params.set("currency", selectedCurrency);
+    if (startDate) params.set("start", format(startDate, "yyyy-MM-dd"));
+    if (endDate) params.set("end", format(endDate, "yyyy-MM-dd"));
+    window.history.replaceState(null, "", `?${params.toString()}`);
   }, [selectedBank, selectedCurrency, startDate, endDate, hydrated]);
 
   const fetchBank = async (bank) => {
