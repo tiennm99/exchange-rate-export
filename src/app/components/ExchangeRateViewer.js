@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { format, subDays, startOfMonth, isSameDay } from "date-fns";
+import { format, subDays, startOfMonth, isSameDay, differenceInCalendarDays } from "date-fns";
 import * as XLSX from "xlsx";
 import { LoadingSpinner, ErrorMessage, EmptyState } from "./exchange-rate-status";
 import { RateTable, ComparisonTable } from "./exchange-rate-table";
@@ -146,7 +146,8 @@ export default function ExchangeRateViewer() {
     setIsLoading(true);
     setResults([]);
     setHasFetched(false);
-    setProgress(null);
+    const totalDays = differenceInCalendarDays(endDate, startDate) + 1;
+    setProgress({ current: 0, total: totalDays });
     try {
       if (compareMode) {
         const [bidvData, tcbData] = await Promise.all([fetchBank("bidv"), fetchBank("tcb")]);
