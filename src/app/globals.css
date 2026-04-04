@@ -20,8 +20,23 @@
   --font-sans: var(--font-geist-sans);
 }
 
+/* Dark mode: explicit toggle OR system preference (unless overridden to light) */
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card-bg: #18181b;
+  --card-border: #27272a;
+  --input-bg: #1e1e22;
+  --input-border: #3f3f46;
+  --input-focus: #60a5fa;
+  --table-header-bg: #1e1e22;
+  --table-row-hover: #27272a;
+  --table-row-stripe: #141416;
+  --muted: #a1a1aa;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0a0a0a;
     --foreground: #ededed;
     --card-bg: #18181b;

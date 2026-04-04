@@ -76,6 +76,42 @@ function getActivePreset(startDate, endDate) {
   return null;
 }
 
+function applyTheme(value) {
+  const root = document.documentElement;
+  if (value === "system") {
+    root.removeAttribute("data-theme");
+  } else {
+    root.setAttribute("data-theme", value);
+  }
+}
+
+const THEME_CYCLE = ["system", "light", "dark"];
+const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" };
+
+function SunIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+    </svg>
+  );
+}
+
+function SystemIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25A2.25 2.25 0 0 1 5.25 3h13.5A2.25 2.25 0 0 1 21 5.25Z" />
+    </svg>
+  );
+}
+
 // Inline SVG icons (16x16) to avoid adding an icon library dependency
 function FetchIcon() {
   return (
@@ -113,6 +149,7 @@ export default function ExchangeRateViewer() {
   const [results, setResults] = useState([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [theme, setTheme] = useState("system");
 
   // Restore saved settings on client mount — URL params take priority over localStorage
   const [hydrated, setHydrated] = useState(false);
@@ -125,6 +162,9 @@ export default function ExchangeRateViewer() {
       if (saved.startDate) setStartDate(saved.startDate);
       if (saved.endDate) setEndDate(saved.endDate);
     }
+    const savedTheme = localStorage.getItem("theme") || "system";
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
     setHydrated(true);
   }, []);
 
@@ -249,11 +289,26 @@ export default function ExchangeRateViewer() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl w-full">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
-        <p className="text-sm mt-1 text-[var(--muted)]">
-          Fetch exchange rates from Vietnamese banks and export to CSV.
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
+          <p className="text-sm mt-1 text-[var(--muted)]">
+            Fetch exchange rates from Vietnamese banks and export to CSV.
+          </p>
+        </div>
+        <button
+          type="button"
+          title={`Theme: ${THEME_LABELS[theme]}`}
+          onClick={() => {
+            const next = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
+            setTheme(next);
+            applyTheme(next);
+            localStorage.setItem("theme", next);
+          }}
+          className="p-2 rounded-lg border border-[var(--input-border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        >
+          {theme === "dark" ? <MoonIcon /> : theme === "light" ? <SunIcon /> : <SystemIcon />}
+        </button>
       </div>
 
       <div
