@@ -3,11 +3,28 @@
 import React, { useState, useEffect, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { format, subDays, startOfMonth } from "date-fns";
+import { format, subDays, startOfMonth, isSameDay, differenceInCalendarDays } from "date-fns";
 import * as XLSX from "xlsx";
 import { LoadingSpinner, ErrorMessage, EmptyState } from "./exchange-rate-status";
 import { RateTable, ComparisonTable } from "./exchange-rate-table";
 import { RateTrendChart } from "./exchange-rate-chart";
+
+// Read state from URL search params (takes priority over localStorage)
+function loadFromUrl() {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const bank = params.get("bank");
+  const currency = params.get("currency");
+  const start = params.get("start");
+  const end = params.get("end");
+  if (!bank && !currency && !start && !end) return null;
+  return {
+    bank: bank || null,
+    currency: currency || null,
+    startDate: start ? new Date(start) : null,
+    endDate: end ? new Date(end) : null,
+  };
+}
 
 function loadSavedSettings() {
   if (typeof window === "undefined") return null;
@@ -49,11 +66,82 @@ const DATE_PRESETS = [
   { label: "This month", start: () => startOfMonth(new Date()), end: () => new Date() },
 ];
 
+function getActivePreset(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+  for (const preset of DATE_PRESETS) {
+    if (isSameDay(startDate, preset.start()) && isSameDay(endDate, preset.end())) {
+      return preset.label;
+    }
+  }
+  return null;
+}
+
+function applyTheme(value) {
+  const root = document.documentElement;
+  if (value === "system") {
+    root.removeAttribute("data-theme");
+  } else {
+    root.setAttribute("data-theme", value);
+  }
+}
+
+const THEME_CYCLE = ["system", "light", "dark"];
+const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" };
+
+function SunIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+    </svg>
+  );
+}
+
+function SystemIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25A2.25 2.25 0 0 1 5.25 3h13.5A2.25 2.25 0 0 1 21 5.25Z" />
+    </svg>
+  );
+}
+
+// Inline SVG icons (16x16) to avoid adding an icon library dependency
+function FetchIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+    </svg>
+  );
+}
+
+function ExcelIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0 1 12 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M10.875 12c-.621 0-1.125.504-1.125 1.125M12 12c.621 0 1.125.504 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 0v1.5c0 .621-.504 1.125-1.125 1.125m0 0c-.621 0-1.125.504-1.125 1.125v1.5" />
+    </svg>
+  );
+}
+
+function CsvIcon() {
+  return (
+    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+    </svg>
+  );
+}
+
 export default function ExchangeRateViewer() {
-  const [startDate, setStartDate] = useState(() => loadSavedSettings()?.startDate || subDays(new Date(), 7));
-  const [endDate, setEndDate] = useState(() => loadSavedSettings()?.endDate || new Date());
-  const [selectedBank, setSelectedBank] = useState(() => loadSavedSettings()?.bank || "bidv");
-  const [selectedCurrency, setSelectedCurrency] = useState(() => loadSavedSettings()?.currency || "USD");
+  const [startDate, setStartDate] = useState(() => subDays(new Date(), 7));
+  const [endDate, setEndDate] = useState(() => new Date());
+  const [selectedBank, setSelectedBank] = useState("bidv");
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
   const [compareMode, setCompareMode] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,10 +149,36 @@ export default function ExchangeRateViewer() {
   const [results, setResults] = useState([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [theme, setTheme] = useState("system");
 
+  // Restore saved settings on client mount — URL params take priority over localStorage
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
+    const urlSettings = loadFromUrl();
+    const saved = urlSettings || loadSavedSettings();
+    if (saved) {
+      if (saved.bank) setSelectedBank(saved.bank);
+      if (saved.currency) setSelectedCurrency(saved.currency);
+      if (saved.startDate) setStartDate(saved.startDate);
+      if (saved.endDate) setEndDate(saved.endDate);
+    }
+    const savedTheme = localStorage.getItem("theme") || "system";
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
+    setHydrated(true);
+  }, []);
+
+  // Sync state to both localStorage and URL
+  useEffect(() => {
+    if (!hydrated) return;
     saveSettings(selectedBank, selectedCurrency, startDate, endDate);
-  }, [selectedBank, selectedCurrency, startDate, endDate]);
+    const params = new URLSearchParams();
+    params.set("bank", selectedBank);
+    params.set("currency", selectedCurrency);
+    if (startDate) params.set("start", format(startDate, "yyyy-MM-dd"));
+    if (endDate) params.set("end", format(endDate, "yyyy-MM-dd"));
+    window.history.replaceState(null, "", `?${params.toString()}`);
+  }, [selectedBank, selectedCurrency, startDate, endDate, hydrated]);
 
   const fetchBank = async (bank) => {
     const response = await fetch("/api/exchange-rates", {
@@ -97,7 +211,8 @@ export default function ExchangeRateViewer() {
     setIsLoading(true);
     setResults([]);
     setHasFetched(false);
-    setProgress(null);
+    const totalDays = differenceInCalendarDays(endDate, startDate) + 1;
+    setProgress({ current: 0, total: totalDays });
     try {
       if (compareMode) {
         const [bidvData, tcbData] = await Promise.all([fetchBank("bidv"), fetchBank("tcb")]);
@@ -129,8 +244,8 @@ export default function ExchangeRateViewer() {
   }, [startDate, endDate, selectedBank, selectedCurrency, compareMode]);
 
   useEffect(() => {
-    handleFetch();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hydrated) handleFetch();
+  }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getExportRows = () => {
     if (compareMode) {
@@ -170,27 +285,38 @@ export default function ExchangeRateViewer() {
     URL.revokeObjectURL(url);
   };
 
-  const inputStyle = {
-    background: "var(--input-bg)",
-    color: "var(--foreground)",
-    borderColor: "var(--input-border)",
-  };
+  const activePreset = getActivePreset(startDate, endDate);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl w-full">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
-        <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Fetch exchange rates from Vietnamese banks and export to CSV.
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
+          <p className="text-sm mt-1 text-[var(--muted)]">
+            Fetch exchange rates from Vietnamese banks and export to CSV.
+          </p>
+        </div>
+        <button
+          type="button"
+          title={`Theme: ${THEME_LABELS[theme]}`}
+          onClick={() => {
+            const next = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
+            setTheme(next);
+            applyTheme(next);
+            localStorage.setItem("theme", next);
+          }}
+          className="p-2 rounded-lg border border-[var(--input-border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        >
+          {theme === "dark" ? <MoonIcon /> : theme === "light" ? <SunIcon /> : <SystemIcon />}
+        </button>
       </div>
 
       <div
-        className="rounded-xl p-5 mb-6"
-        style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        className="rounded-xl p-5 mb-6 bg-[var(--card-bg)] border border-[var(--card-border)]"
         onKeyDown={(e) => { if (e.key === "Enter" && !isLoading) handleFetch(); }}
       >
         <div className="flex flex-col gap-4">
+          {/* Row 1: Selectors and date pickers */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="flex flex-col">
               <label htmlFor="bank" className="text-sm font-medium mb-1.5">Bank</label>
@@ -199,8 +325,7 @@ export default function ExchangeRateViewer() {
                 value={selectedBank}
                 onChange={(e) => setSelectedBank(e.target.value)}
                 disabled={compareMode}
-                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50"
-                style={inputStyle}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 bg-[var(--input-bg)] text-[var(--foreground)] border-[var(--input-border)]"
               >
                 <option value="bidv">BIDV</option>
                 <option value="tcb">Techcombank</option>
@@ -212,8 +337,7 @@ export default function ExchangeRateViewer() {
                 id="currency"
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
-                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                style={inputStyle}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 bg-[var(--input-bg)] text-[var(--foreground)] border-[var(--input-border)]"
               >
                 {CURRENCY_OPTIONS.map((c) => (
                   <option key={c} value={c}>{c === "ALL" ? "All Currencies" : c}</option>
@@ -247,22 +371,26 @@ export default function ExchangeRateViewer() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: "var(--muted)" }}>
+          {/* Row 2: Toggles and date presets */}
+          <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--card-border)]">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--muted)]">
               <input type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)} className="rounded" />
               Compare BIDV vs TCB
             </label>
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: "var(--muted)" }}>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--muted)]">
               <input type="checkbox" checked={showChart} onChange={(e) => setShowChart(e.target.checked)} className="rounded" />
               Show Chart
             </label>
-            <span style={{ color: "var(--card-border)" }}>|</span>
+            <span className="text-[var(--card-border)]">|</span>
             {DATE_PRESETS.map((preset) => (
               <button
                 key={preset.label}
                 type="button"
-                className="text-xs px-3 py-1 rounded-md border transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                style={{ borderColor: "var(--input-border)", color: "var(--muted)" }}
+                className={`text-xs px-3 py-1 rounded-md border transition-colors ${
+                  activePreset === preset.label
+                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700 font-medium"
+                    : "border-[var(--input-border)] text-[var(--muted)] hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                }`}
                 onClick={() => { setStartDate(preset.start()); setEndDate(preset.end()); }}
               >
                 {preset.label}
@@ -270,27 +398,30 @@ export default function ExchangeRateViewer() {
             ))}
           </div>
 
-          <div className="flex flex-row gap-2 justify-end pt-1">
+          {/* Row 3: Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-end pt-1">
             <button
-              className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/40 inline-flex items-center justify-center gap-2"
               onClick={handleFetch}
               disabled={isLoading}
             >
+              <FetchIcon />
               {isLoading ? "Fetching..." : "Fetch Rates"}
             </button>
             <button
-              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 inline-flex items-center justify-center gap-2"
               onClick={handleExportExcel}
               disabled={results.length === 0 || isLoading}
             >
+              <ExcelIcon />
               Export Excel
             </button>
             <button
-              className="text-sm font-medium px-5 py-2 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-              style={{ borderColor: "var(--input-border)", color: "var(--foreground)" }}
+              className="text-sm font-medium px-5 py-2 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/30 inline-flex items-center justify-center gap-2 border-[var(--input-border)] text-[var(--foreground)]"
               onClick={handleExportCsv}
               disabled={results.length === 0 || isLoading}
             >
+              <CsvIcon />
               Export CSV
             </button>
           </div>
@@ -304,7 +435,7 @@ export default function ExchangeRateViewer() {
         {!isLoading && hasFetched && results.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
+              <p className="text-sm text-[var(--muted)]">
                 {results.length} {results.length === 1 ? "record" : "records"} found
               </p>
             </div>
