@@ -1,7 +1,10 @@
 "use client";
 
-import React from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+
+const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
+const MAX_DOTS_DAYS = 31;
+const MAX_LEGEND_LINES = 8;
 
 // Parse rate string to number (handles comma-separated values like "25,880")
 function parseRate(val) {
@@ -54,8 +57,6 @@ export function RateTrendChart({ results, selectedBank, compareMode }) {
     }
   }
 
-  const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
-
   return (
     <div className="rounded-lg p-4 mb-4 bg-[var(--card-bg)] border border-[var(--card-border)]">
       <ResponsiveContainer width="100%" height={300}>
@@ -80,15 +81,15 @@ export function RateTrendChart({ results, selectedBank, compareMode }) {
               fontSize: 12,
             }}
           />
-          {lineKeys.size <= 8 && <Legend wrapperStyle={{ fontSize: 12 }} />}
+          {lineKeys.size <= MAX_LEGEND_LINES && <Legend wrapperStyle={{ fontSize: 12 }} />}
           {Array.from(lineKeys).map((key, i) => (
             <Line
               key={key}
               type="monotone"
               dataKey={key}
-              stroke={colors[i % colors.length]}
+              stroke={CHART_COLORS[i % CHART_COLORS.length]}
               strokeWidth={2}
-              dot={chartData.length <= 31}
+              dot={chartData.length <= MAX_DOTS_DAYS}
               connectNulls
             />
           ))}

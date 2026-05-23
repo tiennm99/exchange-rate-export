@@ -10,12 +10,12 @@ const geistSans = Geist({
 
 export const metadata = {
   title: "Exchange Rate Export",
-  description: "Fetch exchange rates from BIDV or Techcombank and export to CSV",
+  description: "Fetch exchange rates from Vietnamese banks and export to Excel or CSV.",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="vi">
+    <html lang="en">
       <body
         className={`${geistSans.variable} antialiased`}
       >
