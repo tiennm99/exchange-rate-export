@@ -13,3 +13,6 @@ updates:
         patterns: ["*"]
     versioning-strategy: increase
     labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
