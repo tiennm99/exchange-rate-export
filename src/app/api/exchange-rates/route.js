@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format, addDays, subDays } from "date-fns";
 import axios from "axios";
 import https from "https";
 import crypto from "crypto";
@@ -105,7 +105,7 @@ function getDateRange(start, end) {
   const last = new Date(end);
   while (current <= last) {
     dates.push(new Date(current));
-    current.setDate(current.getDate() + 1);
+    current = addDays(current, 1);
   }
   return dates;
 }
@@ -114,7 +114,7 @@ function getDateRange(start, end) {
 async function getPreviousDayRate(date, bank, currency, rateCache, maxAttempts = 30) {
   let currentDate = new Date(date);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    currentDate.setDate(currentDate.getDate() - 1);
+    currentDate = subDays(currentDate, 1);
     const dateStr = format(currentDate, "yyyy-MM-dd");
 
     if (rateCache.has(dateStr)) {
