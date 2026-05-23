@@ -1,7 +1,5 @@
 "use client";
 
-import React from "react";
-
 export function ComparisonTable({ results }) {
   const headers = [
     { label: "Date", numeric: false },
@@ -41,7 +39,7 @@ export function ComparisonTable({ results }) {
               ];
               return (
                 <tr
-                  key={idx}
+                  key={`${row.date}-${row.currency}`}
                   className={`transition-colors hover:!bg-[var(--table-row-hover)] ${idx % 2 !== 0 ? "bg-[var(--table-row-stripe)]" : ""}`}
                 >
                   {cells.map((cell, i) => (
@@ -60,8 +58,8 @@ export function ComparisonTable({ results }) {
       </div>
       {/* Mobile cards */}
       <div className="sm:hidden flex flex-col gap-2">
-        {results.map((row, idx) => (
-          <div key={idx} className="rounded-lg border border-[var(--card-border)] p-3 bg-[var(--card-bg)] text-sm">
+        {results.map((row) => (
+          <div key={`${row.date}-${row.currency}`} className="rounded-lg border border-[var(--card-border)] p-3 bg-[var(--card-bg)] text-sm">
             <div className="flex justify-between mb-1.5">
               <span className="font-medium">{row.date}</span>
               <span className="text-[var(--muted)]">{row.currency}</span>
@@ -158,9 +156,12 @@ export function RateTable({ results, selectedBank }) {
           <tbody>
             {results.map((row, idx) => {
               const cells = getRowCells(row);
+              const rowKey = selectedBank === "bidv"
+                ? `${row.date}-${row.currency}-${row.nameVI}`
+                : `${row.date}-${row.sourceCurrency}-${row.label}`;
               return (
                 <tr
-                  key={idx}
+                  key={rowKey}
                   className={`transition-colors hover:!bg-[var(--table-row-hover)] ${idx % 2 !== 0 ? "bg-[var(--table-row-stripe)]" : ""}`}
                 >
                   {cells.map((cell, i) => (
@@ -179,10 +180,13 @@ export function RateTable({ results, selectedBank }) {
       </div>
       {/* Mobile cards */}
       <div className="sm:hidden flex flex-col gap-2">
-        {results.map((row, idx) => {
+        {results.map((row) => {
           const card = getMobileCard(row);
+          const rowKey = selectedBank === "bidv"
+            ? `${row.date}-${row.currency}-${row.nameVI}`
+            : `${row.date}-${row.sourceCurrency}-${row.label}`;
           return (
-            <div key={idx} className="rounded-lg border border-[var(--card-border)] p-3 bg-[var(--card-bg)] text-sm">
+            <div key={rowKey} className="rounded-lg border border-[var(--card-border)] p-3 bg-[var(--card-bg)] text-sm">
               <div className="flex justify-between mb-1.5">
                 <span className="font-medium">{card.title}</span>
                 <span className="text-[var(--muted)] text-xs">{card.subtitle}</span>

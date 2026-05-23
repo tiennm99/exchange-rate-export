@@ -1,12 +1,10 @@
 "use client";
 
-import React from "react";
-
 export function LoadingSpinner({ progress }) {
   return (
     <div className="flex items-center justify-center py-12">
       <div className="flex flex-col items-center gap-3 w-64">
-        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin" />
         <p className="text-[var(--muted)] text-sm">
           {progress?.total ? `Fetching rates for ${progress.total} day${progress.total > 1 ? "s" : ""}...` : "Fetching exchange rates..."}
         </p>
