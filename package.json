@@ -12,19 +12,19 @@
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "axios": "^1.16.1",
-    "date-fns": "^4.3.0",
-    "next": "16.2.6",
-    "react": "^19.0.0",
+    "axios": "^1.17.0",
+    "date-fns": "^4.4.0",
+    "next": "16.2.7",
+    "react": "^19.2.7",
     "react-datepicker": "^9.1.0",
-    "react-dom": "^19.0.0",
+    "react-dom": "^19.2.7",
     "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.2.7",
     "tailwindcss": "^4"
   },
   "engines": {
