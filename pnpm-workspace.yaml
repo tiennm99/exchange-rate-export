@@ -1,0 +1,22 @@
+# Force patched versions of transitive dependencies that carry known advisories.
+# Each entry is the lowest release that closes every advisory affecting the
+# version previously resolved in pnpm-lock.yaml.
+overrides:
+  brace-expansion: ^5.0.8
+  glob: ^10.5.0
+  lodash: ^4.18.1
+  minimatch: ^9.0.7
+  picomatch: ^2.3.2
+  # Pinned exactly rather than with a caret: pnpm's minimumReleaseAge policy
+  # rejects releases younger than 24h in CI, and a caret would keep drifting
+  # onto whatever postcss published today. 8.5.22 clears every advisory,
+  # which need 8.5.18 at the highest.
+  postcss: 8.5.22
+  sharp: ^0.35.3
+  yaml: ^2.8.3
+
+# next lists sharp as an optional dependency for image optimization, which this
+# app disables (images.unoptimized in next.config.mjs). Skipping its build
+# script keeps installs hermetic and free of native compilation.
+allowBuilds:
+  sharp: false

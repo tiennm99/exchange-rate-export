@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Download, Loader2 } from "lucide-react"
-import * as XLSX from "xlsx"
+import writeXlsxFile, { type Column } from "write-excel-file/browser"
 
 interface ExchangeRateData {
   date: string
@@ -20,6 +20,19 @@ interface ExchangeRateData {
   askRateTM: string
   inputDate: string
 }
+
+// Mirrors the column order of the CSV export. Every rate arrives from the API
+// as a string and is written as-is, so no cell is coerced to a number.
+const XLSX_COLUMNS: Column<ExchangeRateData>[] = [
+  { header: "Date", cell: (row) => row.date },
+  { header: "Bank", cell: (row) => row.bank },
+  { header: "Currency", cell: (row) => row.currency },
+  { header: "Ask Rate", cell: (row) => row.askRate },
+  { header: "Bid Rate CK", cell: (row) => row.bidRateCK },
+  { header: "Bid Rate TM", cell: (row) => row.bidRateTM },
+  { header: "Ask Rate TM", cell: (row) => row.askRateTM },
+  { header: "Input Date", cell: (row) => row.inputDate },
+]
 
 type BankType = "techcombank" | "bidv"
 
@@ -257,40 +270,21 @@ export default function ExchangeRateExporter() {
     document.body.removeChild(link)
   }
 
-  const exportToXLSX = () => {
+  const exportToXLSX = async () => {
     if (data.length === 0) return
 
-    const worksheet = XLSX.utils.json_to_sheet(
-      data.map((row) => ({
-        Date: row.date,
-        Bank: row.bank,
-        Currency: row.currency,
-        "Ask Rate": row.askRate,
-        "Bid Rate CK": row.bidRateCK,
-        "Bid Rate TM": row.bidRateTM,
-        "Ask Rate TM": row.askRateTM,
-        "Input Date": row.inputDate,
-      })),
-    )
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Exchange Rates")
-
-    const arrayBuffer = XLSX.write(workbook, {
-      bookType: "xlsx",
-      type: "array",
-    })
-
-    const blob = new Blob([arrayBuffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8",
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `exchange_rates_${bank}_${currency.replace(/[^a-zA-Z0-9]/g, "_")}_${startDate}_to_${endDate}.xlsx`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    // toFile triggers the browser download, so no manual object URL is needed.
+    try {
+      await writeXlsxFile(data, {
+        columns: XLSX_COLUMNS,
+        sheet: "Exchange Rates",
+      }).toFile(
+        `exchange_rates_${bank}_${currency.replace(/[^a-zA-Z0-9]/g, "_")}_${startDate}_to_${endDate}.xlsx`,
+      )
+    } catch (error) {
+      setError("An error occurred while exporting to XLSX")
+      console.error(error)
+    }
   }
 
   const formatNumber = (value: string) => {
