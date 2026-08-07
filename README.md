@@ -1,10 +1,10 @@
 # exchange-rate-export
-Fetch data from BIDV or Techcombank and export to Excel or CSV.
+Fetch data from BIDV or Techcombank and export to Excel format.
 
 Features:
 - Choose BIDV or Techcombank.
 - Select time range.
-- View and export to Excel or CSV.
+- View and export to Excel.
 
 Use data from :
 - https://bidv.com.vn/vn/ty-gia-ngoai-te
@@ -16,18 +16,21 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-Requires Node.js 24+ and pnpm 11+.
-
 First, run the development server:
 
 ```bash
-pnpm install
+npm run dev
+# or
+yarn dev
+# or
 pnpm dev
+# or
+bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `src/app/page.js`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
