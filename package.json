@@ -10,24 +10,28 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@vercel/analytics": "^2.0.1",
-    "@vercel/speed-insights": "^2.0.0",
-    "axios": "^1.18.1",
-    "date-fns": "^4.4.0",
-    "next": "16.2.11",
-    "react": "^19.2.7",
-    "react-datepicker": "^9.1.0",
-    "react-dom": "^19.2.7",
-    "recharts": "^3.9.2",
-    "write-excel-file": "^4.1.1"
+    "@vercel/analytics": "^1.5.0",
+    "@vercel/speed-insights": "^1.2.0",
+    "axios": "^1.12.0",
+    "date-fns": "^4.1.0",
+    "next": "16.2.3",
+    "react": "^19.0.0",
+    "react-datepicker": "^8.4.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^3.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "eslint": "^9.39.5",
-    "eslint-config-next": "16.2.11",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.4",
     "tailwindcss": "^4"
   },
   "engines": {
     "node": ">=24"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": ["sharp", "unrs-resolver"]
   }
 }

@@ -4,14 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format, subDays, differenceInCalendarDays } from "date-fns";
-import writeExcelFile from "write-excel-file/browser";
+import * as XLSX from "xlsx";
 import { LoadingSpinner, ErrorMessage, EmptyState } from "./exchange-rate-status";
 import { RateTable, ComparisonTable } from "./exchange-rate-table";
 import { RateTrendChart } from "./exchange-rate-chart";
 import { SunIcon, MoonIcon, SystemIcon, FetchIcon, ExcelIcon, CsvIcon } from "./exchange-rate-icons";
 import { loadFromUrl, loadSavedSettings, saveSettings, applyTheme } from "./exchange-rate-storage";
 import { CURRENCY_OPTIONS, DATE_PRESETS, getActivePreset, THEME_CYCLE, THEME_LABELS } from "./exchange-rate-constants";
-import { downloadTextFile, rowsToCsv } from "./exchange-rate-export-files";
 
 export default function ExchangeRateViewer() {
   const [startDate, setStartDate] = useState(() => subDays(new Date(), 7));
@@ -136,14 +135,27 @@ export default function ExchangeRateViewer() {
 
   const baseFilename = `exchange_rates_${compareMode ? "compare" : selectedBank}_${selectedCurrency}_${format(new Date(), "yyyy-MM-dd")}`;
 
-  const handleExportExcel = async () => {
+  const handleExportExcel = () => {
     if (results.length === 0) return;
-    await writeExcelFile(getExportRows(), { sheet: "Exchange Rates" }).toFile(`${baseFilename}.xlsx`);
+    const ws = XLSX.utils.aoa_to_sheet(getExportRows());
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Exchange Rates");
+    XLSX.writeFile(wb, `${baseFilename}.xlsx`);
   };
 
   const handleExportCsv = () => {
     if (results.length === 0) return;
-    downloadTextFile(rowsToCsv(getExportRows()), `${baseFilename}.csv`, "text/csv;charset=utf-8;");
+    const ws = XLSX.utils.aoa_to_sheet(getExportRows());
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${baseFilename}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const activePreset = getActivePreset(startDate, endDate);
