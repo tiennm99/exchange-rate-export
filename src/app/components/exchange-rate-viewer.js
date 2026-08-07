@@ -1,0 +1,315 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { format, subDays, differenceInCalendarDays } from "date-fns";
+import writeExcelFile from "write-excel-file/browser";
+import { LoadingSpinner, ErrorMessage, EmptyState } from "./exchange-rate-status";
+import { RateTable, ComparisonTable } from "./exchange-rate-table";
+import { RateTrendChart } from "./exchange-rate-chart";
+import { SunIcon, MoonIcon, SystemIcon, FetchIcon, ExcelIcon, CsvIcon } from "./exchange-rate-icons";
+import { loadFromUrl, loadSavedSettings, saveSettings, applyTheme } from "./exchange-rate-storage";
+import { CURRENCY_OPTIONS, DATE_PRESETS, getActivePreset, THEME_CYCLE, THEME_LABELS } from "./exchange-rate-constants";
+import { downloadTextFile, rowsToCsv } from "./exchange-rate-export-files";
+
+export default function ExchangeRateViewer() {
+  const [startDate, setStartDate] = useState(() => subDays(new Date(), 7));
+  const [endDate, setEndDate] = useState(() => new Date());
+  const [selectedBank, setSelectedBank] = useState("bidv");
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
+  const [compareMode, setCompareMode] = useState(false);
+  const [showChart, setShowChart] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [results, setResults] = useState([]);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [theme, setTheme] = useState("system");
+
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const urlSettings = loadFromUrl();
+    const saved = urlSettings || loadSavedSettings();
+    if (saved) {
+      if (saved.bank) setSelectedBank(saved.bank);
+      if (saved.currency) setSelectedCurrency(saved.currency);
+      if (saved.startDate) setStartDate(saved.startDate);
+      if (saved.endDate) setEndDate(saved.endDate);
+    }
+    const savedTheme = localStorage.getItem("theme") || "system";
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveSettings(selectedBank, selectedCurrency, startDate, endDate);
+    const params = new URLSearchParams();
+    params.set("bank", selectedBank);
+    params.set("currency", selectedCurrency);
+    if (startDate) params.set("start", format(startDate, "yyyy-MM-dd"));
+    if (endDate) params.set("end", format(endDate, "yyyy-MM-dd"));
+    window.history.replaceState(null, "", `?${params.toString()}`);
+  }, [selectedBank, selectedCurrency, startDate, endDate, hydrated]);
+
+  const fetchBank = async (bank) => {
+    const response = await fetch("/api/exchange-rates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startDate: format(startDate, "yyyy-MM-dd"),
+        endDate: format(endDate, "yyyy-MM-dd"),
+        bank,
+        currency: selectedCurrency,
+      }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Failed to fetch ${bank} rates`);
+    }
+    return response.json();
+  };
+
+  const handleFetch = useCallback(async () => {
+    if (!startDate || !endDate) {
+      setError("Please select both start and end dates");
+      return;
+    }
+    if (startDate > endDate) {
+      setError("Start date cannot be after end date");
+      return;
+    }
+    setError("");
+    setIsLoading(true);
+    setResults([]);
+    setHasFetched(false);
+    const totalDays = differenceInCalendarDays(endDate, startDate) + 1;
+    setProgress({ total: totalDays });
+    try {
+      if (compareMode) {
+        const [bidvData, tcbData] = await Promise.all([fetchBank("bidv"), fetchBank("tcb")]);
+        const merged = new Map();
+        for (const row of (bidvData.data || [])) {
+          const key = `${row.date}|${row.currency}`;
+          merged.set(key, { date: row.date, currency: row.currency, bidvBuyTm: row.muaTm, bidvSell: row.ban });
+        }
+        for (const row of (tcbData.data || [])) {
+          const key = `${row.date}|${row.sourceCurrency}`;
+          const existing = merged.get(key) || { date: row.date, currency: row.sourceCurrency };
+          existing.tcbBidTm = row.bidRateTM;
+          existing.tcbAsk = row.askRate;
+          merged.set(key, existing);
+        }
+        setResults(Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date)));
+      } else {
+        const data = await fetchBank(selectedBank);
+        setResults(data.data || []);
+      }
+      setHasFetched(true);
+    } catch (err) {
+      setError(`An error occurred while fetching exchange rates: ${err.message}`);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+      setProgress(null);
+    }
+  }, [startDate, endDate, selectedBank, selectedCurrency, compareMode]);
+
+  useEffect(() => {
+    if (hydrated) handleFetch();
+  }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getExportRows = () => {
+    if (compareMode) {
+      const headers = ["Date", "Currency", "BIDV Buy TM", "BIDV Sell", "TCB Bid TM", "TCB Ask"];
+      return [headers, ...results.map((r) => [r.date, r.currency, r.bidvBuyTm || "", r.bidvSell || "", r.tcbBidTm || "", r.tcbAsk || ""])];
+    }
+    if (selectedBank === "bidv") {
+      const headers = ["Date", "NameVI", "MuaTm", "MuaCk", "Currency", "NameEN", "Ban"];
+      return [headers, ...results.map((r) => [r.date, r.nameVI, r.muaTm, r.muaCk, r.currency, r.nameEN, r.ban])];
+    }
+    const headers = ["Date", "Label", "AskRate", "BidRateCK", "BidRateTM", "SourceCurrency", "TargetCurrency", "AskRateTM"];
+    return [headers, ...results.map((r) => [r.date, r.label, r.askRate, r.bidRateCK, r.bidRateTM, r.sourceCurrency, r.targetCurrency, r.askRateTM])];
+  };
+
+  const baseFilename = `exchange_rates_${compareMode ? "compare" : selectedBank}_${selectedCurrency}_${format(new Date(), "yyyy-MM-dd")}`;
+
+  const handleExportExcel = async () => {
+    if (results.length === 0) return;
+    await writeExcelFile(getExportRows(), { sheet: "Exchange Rates" }).toFile(`${baseFilename}.xlsx`);
+  };
+
+  const handleExportCsv = () => {
+    if (results.length === 0) return;
+    downloadTextFile(rowsToCsv(getExportRows()), `${baseFilename}.csv`, "text/csv;charset=utf-8;");
+  };
+
+  const activePreset = getActivePreset(startDate, endDate);
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-5xl w-full">
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Exchange Rate Export</h1>
+          <p className="text-sm mt-1 text-[var(--muted)]">
+            Fetch exchange rates from Vietnamese banks and export to Excel or CSV.
+          </p>
+        </div>
+        <button
+          type="button"
+          title={`Theme: ${THEME_LABELS[theme]}`}
+          onClick={() => {
+            const next = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
+            setTheme(next);
+            applyTheme(next);
+            localStorage.setItem("theme", next);
+          }}
+          className="p-2 rounded-lg border border-[var(--input-border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        >
+          {theme === "dark" ? <MoonIcon /> : theme === "light" ? <SunIcon /> : <SystemIcon />}
+        </button>
+      </div>
+
+      <div
+        className="rounded-xl p-5 mb-6 bg-[var(--card-bg)] border border-[var(--card-border)]"
+        onKeyDown={(e) => { if (e.key === "Enter" && !isLoading) handleFetch(); }}
+      >
+        <div className="flex flex-col gap-4">
+          {/* Row 1: Selectors and date pickers */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex flex-col">
+              <label htmlFor="bank" className="text-sm font-medium mb-1.5">Bank</label>
+              <select
+                id="bank"
+                value={selectedBank}
+                onChange={(e) => setSelectedBank(e.target.value)}
+                disabled={compareMode}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 bg-[var(--input-bg)] text-[var(--foreground)] border-[var(--input-border)]"
+              >
+                <option value="bidv">BIDV</option>
+                <option value="tcb">Techcombank</option>
+              </select>
+            </div>
+            <div className="flex flex-col">
+              <label htmlFor="currency" className="text-sm font-medium mb-1.5">Currency</label>
+              <select
+                id="currency"
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 bg-[var(--input-bg)] text-[var(--foreground)] border-[var(--input-border)]"
+              >
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c === "ALL" ? "All Currencies" : c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col">
+              <label htmlFor="start-date" className="text-sm font-medium mb-1.5">Start Date</label>
+              <DatePicker
+                id="start-date"
+                selected={startDate}
+                onChange={(date) => setStartDate(date)}
+                maxDate={endDate || new Date()}
+                dateFormat="yyyy-MM-dd"
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                placeholderText="Select start date"
+              />
+            </div>
+            <div className="flex flex-col">
+              <label htmlFor="end-date" className="text-sm font-medium mb-1.5">End Date</label>
+              <DatePicker
+                id="end-date"
+                selected={endDate}
+                onChange={(date) => setEndDate(date)}
+                minDate={startDate}
+                maxDate={new Date()}
+                dateFormat="yyyy-MM-dd"
+                className="border rounded-lg px-3 py-2 text-sm w-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                placeholderText="Select end date"
+              />
+            </div>
+          </div>
+
+          {/* Row 2: Toggles and date presets */}
+          <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--card-border)]">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--muted)]">
+              <input type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)} className="rounded" />
+              Compare BIDV vs TCB
+            </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--muted)]">
+              <input type="checkbox" checked={showChart} onChange={(e) => setShowChart(e.target.checked)} className="rounded" />
+              Show Chart
+            </label>
+            <span className="text-[var(--card-border)]">|</span>
+            {DATE_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                className={`text-xs px-3 py-1 rounded-md border transition-colors ${
+                  activePreset === preset.label
+                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700 font-medium"
+                    : "border-[var(--input-border)] text-[var(--muted)] hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                }`}
+                onClick={() => { setStartDate(preset.start()); setEndDate(preset.end()); }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Row 3: Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-end pt-1">
+            <button
+              className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/40 inline-flex items-center justify-center gap-2"
+              onClick={handleFetch}
+              disabled={isLoading}
+            >
+              <FetchIcon />
+              {isLoading ? "Fetching..." : "Fetch Rates"}
+            </button>
+            <button
+              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 inline-flex items-center justify-center gap-2"
+              onClick={handleExportExcel}
+              disabled={results.length === 0 || isLoading}
+            >
+              <ExcelIcon />
+              Export Excel
+            </button>
+            <button
+              className="text-sm font-medium px-5 py-2 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/30 inline-flex items-center justify-center gap-2 border-[var(--input-border)] text-[var(--foreground)]"
+              onClick={handleExportCsv}
+              disabled={results.length === 0 || isLoading}
+            >
+              <CsvIcon />
+              Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div aria-live="polite" aria-atomic="true">
+        {error && <ErrorMessage message={error} />}
+        {isLoading && <LoadingSpinner progress={progress} />}
+        {!isLoading && hasFetched && results.length === 0 && <EmptyState />}
+        {!isLoading && hasFetched && results.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-[var(--muted)]">
+                {results.length} {results.length === 1 ? "record" : "records"} found
+              </p>
+            </div>
+            {showChart && (
+              <RateTrendChart results={results} selectedBank={selectedBank} compareMode={compareMode} />
+            )}
+            {compareMode
+              ? <ComparisonTable results={results} />
+              : <RateTable results={results} selectedBank={selectedBank} />
+            }
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
